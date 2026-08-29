@@ -1,0 +1,75 @@
+Package: MultiOmicsDataCompile
+Type: Package
+Title: Compile and Explore Multi-Omics Data
+Version: 0.1.0
+Authors@R: c(
+    person("Brendan", "Gongol", email = "8220574+brendangongol@users.noreply.github.com",
+           role = c("aut", "cre")),
+    person("Xueyuan", "Jiang", role = "aut"),
+    person("Xiaowen", "Chen", role = "aut"),
+    person("Yang", "Liu", role = "aut")
+    )
+Description: Downloads, harmonizes, and batch-processes transcriptomic,
+    proteomic, methylation, and metabolomic data from public repositories.
+    The package creates integrated data objects and provides a Shiny
+    application for lightweight quality control and exploratory analysis.
+Depends:
+    R (>= 4.2.0)
+Imports:
+    AnnotationDbi,
+    assertthat,
+    Biobase,
+    BiocFileCache,
+    clariomdhumantranscriptcluster.db,
+    data.table,
+    DEP,
+    DESeq2,
+    dplyr,
+    GEOquery,
+    ggrepel,
+    ggplot2,
+    graphics,
+    grid,
+    grDevices,
+    hgu133a.db,
+    hgu133plus2.db,
+    hta20transcriptcluster.db,
+    hugene10sttranscriptcluster.db,
+    hugene11sttranscriptcluster.db,
+    hugene20sttranscriptcluster.db,
+    hwgcod.db,
+    illuminaHumanv4.db,
+    limma,
+    makeunique,
+    MSnbase,
+    NormalyzerDE,
+    org.Hs.eg.db,
+    org.Mm.eg.db,
+    org.Rn.eg.db,
+    R.utils,
+    radiant.data,
+    readxl,
+    reshape2,
+    rpx,
+    rtracklayer,
+    S4Vectors,
+    stats,
+    stringr,
+    SummarizedExperiment,
+    textclean,
+    tidyr
+Suggests:
+    DT,
+    knitr,
+    plotly,
+    RColorBrewer,
+    rmarkdown,
+    shiny,
+    shinyWidgets
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+URL: https://github.com/brendangongol/MultiOmicsDataCompile
+BugReports: https://github.com/brendangongol/MultiOmicsDataCompile/issues
+VignetteBuilder: knitr
+Config/roxygen2/version: 8.1.0

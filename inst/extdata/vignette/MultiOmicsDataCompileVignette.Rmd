@@ -1,0 +1,391 @@
+---
+title: "MultiOmicsDataCompile: a multi-omics atlas for cardiometabolic disease"
+author: "Brendan Gongol, Xueyuan Jiang, Xiaowen Chen, Yang Liu"
+output:
+  rmarkdown::html_document:
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    number_sections: false
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# About
+
+The `MultiOmicsDataCompile` package provides tools and a Shiny app for integrating public and proprietary transcriptomic, proteomic, methylation, and metabolomic datasets. The package includes transcript-expression and proteomics processing workflows for adding user-selected datasets. This vignette describes those workflows and concludes with application deployment.
+
+# Installation and setup
+
+There are three key steps involved in installing and launching `MultiOmicsDataCompile`.
+
+**1)** Install dependencies <br>
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
+BiocManager::install(
+  "brendangongol/MultiOmicsDataCompile",
+  dependencies = TRUE
+)
+```
+
+**2)** Install app <br>
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+devtools::install_github("brendangongol/MultiOmicsDataCompile")
+```
+
+**3)** Execute app deployment <br>
+In this step, the user must specify the path by editing the "path to database/MultiOmicsAnalysis" line of code where the database linked to the app will be located. The `makeDirectory` function then builds the specified directory containing the file structures needed to execute the remainder of this vignette and launch the application.   
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(MultiOmicsDataCompile)
+homedir <- "path/to/MultiOmicsDataCompileAnalysis"
+makeDirectory(homedir)
+setwd(homedir)
+```
+Once `makeDirectory()` and `AppSetup()` have been executed, open the `Scripts` directory and run `WorkflowScript.R` to build the database and launch the Shiny app.
+
+file structure and directory organization <br>
+
+- **AppData**: The directory where expression profiles are stored individually. Files stored in this directory follow the following naming convention: [ID]\_[Treatment\_reference comparison] if the data contains differential expression information or [ID]\_[Treatment\_reference comparison]\_[Raw] if the file contains raw expression level information. <br>
+- **ArraymetaData**: Directory that contains the meta data information for any array expression datasets that are processed.  This directory is populated by the `GEOCompile` function if the `writeMetaData` argument is `TRUE`. <br>
+- **DirectionCheck**: This directory contains  plots that are used to validate that the GEO2R comparison vectors are computing the desired treatment/reference fold change orientation rather than the inverse. This directory is populated by the `GEO2RDirectionCheck` function. <br>
+- **ExternalAnalyzed**: This directory contains the differential expression and raw RNA sequencing expression level data files that that are generated from a custom pipeline. This directory follows the following naming convention: [ID]_[sample name]. If the file contains count data, the term "CountCoding" must be present in the sample name. <br>
+- **GEOcache**: Directory where data downloaded from GEO are cached.  This file is populated by the `GEOCompile` function. <br>
+- **Metabolomics**: The directory where metabolic data is stored. <br>
+- **Methylation**: The directory where methylation data is stored. <br>
+- **OverviewFiles**: Directory where information related to the pipeline, Shiny app, and sample processing is stored. Upon launch, this directory contains `GEODataOverview3.csv` with sample-processing information, `GEOPlatformInfo.csv` with GEO platform information, and `ProteomicComparisons.xls` with the fold-change comparisons calculated for each proteomics dataset. <br>
+- **ProcessFiles**: This directory contains the final databases that are used in the shiny app. <br>
+- **Proteomic_1**: This directory provides an initial location to download proteomics data. <br>
+- **Proteomic_2**: This directory contains harmonized proteomics datasets. <br>
+- **Proteomic_3**: This directory contains the processed proteomics datasets consisting of one file per data set-differential expression combination.  <br>
+- **RawQC**: Directory where box plots are stored for each dataset that is obtained from GEO. These boxplots illustrate the overall "normalization" across samples in a data set. <br>
+- **RunInfo**: This directory contains the run-information files for RNA-seq datasets obtained from GEO. These metadata files must be downloaded manually and use the naming convention `[GSE number]_SraRunTable.txt`. <br>
+- **Scripts**: This file contains the sample processing workflow and files to run the shiny app. <br>
+
+# RNA expression workflow
+
+Microarray profiles use platform-specific probe identifiers. `PlatformAnnotationLoad()` maps those identifiers to Entrez identifiers and gene names for downstream processing. Currently, the following platforms are supported: GPL23126, GPL30511, GPL28577, GPL29503, GPL14951, GPL6244, GPL16686, GPL570, GPL11532, GPL14877, GPL2895, GPL10558, GPL14550, GPL17586, GPL8910, GPL127, GPL128, GPL131, GPL549, GPL96, GPL3050, GPL20115, GPL18056, GPL19886, GPL23159, GPL19109, GPL17692, GPL13667, GPL10335.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+PlatAnnotInfo <- PlatformAnnotationLoad(PlatInfo=fread(file.path(homedir, "OverviewFiles", "GEOPlatformInfo.csv"), header = TRUE))
+fwrite(PlatAnnotInfo, file.path(homedir, "OverviewFiles", "GEOPlatformAnnotation.txt"), row.names = FALSE, quote = FALSE, sep = "\t")
+```
+
+An example plate information table is illustrated below:
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+PlatAnnotInfo <- fread(file.path(homedir, "OverviewFiles", "GEOPlatformAnnotation.txt"))
+datatable(head(PlatAnnotInfo), options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
+```
+
+The overview file contains all the information necessary for processing RNA sequencing and Array data sets from the gene expression omnibus (GEO). In addition, it contains the information on all data sets that are incorporated into the app, thus providing a tabular overview of the data. This table consists of the following columns: <br>
+- **ID**: The ID number of the data set. This number is the GSE- number or the  PXD- number if the dataset is obtained from GEO oe proteomeexpress respectively. If obtained from an open source publication, it is recommended to use the PMID of the publication describing the data.  However, If the data is generated locally, the ID can be a custom unique identifier. <br>
+- **GPLNumber**: The GPL number if the dataset was obtained from GEO. <br>
+- **ComparisonVector**: The vector contain 1, 0, and X indicating which samples are treatment or reference samples for the data set.  This column is used for processing transcript expression data from GEO.  Currently, only one treatment and reference comparison are supported.  <br>
+- **RawColumnNames**: Contains a vector of column names for the raw data columns of a data set. This is an optional column unless the `renameRaw` argument of the GEOCompile function is set to `TRUE`.  The default behavior is to name columns by the [ID]_[Sample number] for samples processed from GEO. <br>
+- **FCColumnNames**: Contains the names assigned to differential-expression output columns. Names must follow `[treatment]-[reference]_logFC,[treatment]-[reference]_Pvalue,[treatment]-[reference]_AdjPValue` and must not contain spaces. <br>
+- **Title**: Information about the publication, when available. <br>
+- **Year**: The year the dataset became available. <br>
+- **Profiling Resource**: The equipment used to generate the data. <br>
+- **Tissue**: The tissue the samples for the data originated from. <br>
+- **Disease**: The name of the pathology the data set explores. <br>
+- **Species**: The species the sample originated from. <br>
+- **Donor count**: The number of samples in the dataset.	<br>
+- **Website**: The website where the data was obtained from. <br>
+- **DataType**: The type of data (`BulkExpressionProfile`, `Proteomic`, or `Methylation`). <br>
+- **Technology**: The technology used to generate the data (Array, RNAseq, Mass Spectrometry, Bisulfite Sequencing)	<br>
+- **DownloadMetaData**: Either `TRUE` or `FALSE` indicating if the meta data should be downloaded from GEO. This is only used if data is processed from GEO.<br>	
+- **DownloadRawData**: Either `TRUE` or `FALSE` indicating if the raw data should be downloaded from GEO. The raw data only needs to be downloaded one time since all samples are downloaded. This is only used if data is processed from GEO. <br>
+- **GEO2R**:  Either `TRUE` or `FALSE` indicating if GEO should be used to process samples. <br>
+- **RunInfoFile**: Either `TRUE` or `FALSE` indicating if a runInfo file must be downloaded from GEO as the meta data for a given data set. <br>	
+- **Description**: Contains user specified information. <br>
+- **Resources**: Contains user specified information. <br>
+
+An example of this overview file with selected columns is shown below.
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+overview <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
+overview <- overview[GEO2R == TRUE,]
+datatable(overview[34:44,c(1:2, 7,9:12, 14:18), with = FALSE], options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
+```
+
+When using GEO to process samples, it is important to check that there are no duplicated samples processed.  This can be accomplished with the following code which should not return any records. 
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+#### check for duplicates assay names ####
+overview$AssayNames <-gsub(" ", "", paste(overview$ID, overview$FCColumnNames, overview$Tissue, overview$Disease, sep = "_"))
+overview[duplicated(AssayNames),][!AssayNames == "__",] # check should return nothing
+```
+
+Gene expression data obtained from GEO is processed in bulk using the `GEOCompile` function.  This function serves as a wrapper for the well established GEO2R algorithm with some additional code built around it to enable bulk data processing.  However, there are no changes to the GEO2R Algorithm that alter the data processing. After executing this function, samples are processed in sequential order to how they are displayed in the overview file and individual results for each record are stored in the `AppData` directory. Additional information about GEO2R can be found [here](https://www.ncbi.nlm.nih.gov/geo/info/geo2r.html).
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+Compiled <- GEOCompile(DS=overview$ID,
+                       gpl=overview$GPLNumber,
+                       gsm=overview$ComparisonVector,
+                       namestr=overview$FCColumnNames,
+                       nameraw=overview$RawColumnNames,
+                       PlatAnnotInfo = PlatAnnotInfo,
+                       destdir = file.path(homedir, "GEOcache"),
+                       filename = NULL,
+                       writeDB=TRUE,
+                       writeRaw=overview$DownloadRawData,
+                       GenerateMetaData=overview$DownloadMetaData,
+                       MetaDataPath = file.path(homedir, "ArrayMetaData"),
+                       writeMetaData=TRUE,
+                       DBPath=file.path(homedir, "AppData"),
+                       Technology = overview$Technology,
+                       renameRaw = FALSE,
+                       subsetRaw = FALSE)
+```
+
+GEO2R primarily relies on a vector (referred to as a ComparisonVector here), which drives the treatment and reference sample information for a given data set.  However, it is possible that some confusion could be generated regarding either the sample loading in array data sets and the directionality of the final fold changes (e.g. reversal because of superimposed "1" and "0" designations in the ComparisonVector). The `GEO2RDirectionCheck` function provides some evidence that cComparisonVectors were set up correctly by taking the treatment and control samples, normalizing them with DEseq2 (if an RNAseq sample was processed), and then performing an ad-hoc differential expression by dividing the average of the treatment samples by the average of the reference samples.  This is compared to the fold changes that are calculated by the `GEOCompile` function using spearman correlations and linear models. Note: there is additional variability that is observed in the array data sets since these are processed using limma, a linear model based algorithm. Additionally, samples are processed without additional normalization. 
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+checkFile <- GEO2RDirectionCheck(DBPath=file.path(homedir, "AppData"),
+                                 DS=overview$ID,
+                                 namestr=overview$FCColumnNames,
+                                 gsm=overview$ComparisonVector,
+                                 Technology = overview$Technology,
+                                 GraphPath = file.path(homedir, "DirectionCheck"),
+                                 subsetRaw = FALSE,
+                                 writeRaw=overview$DownloadRawData,
+                                 RawQCPath = file.path(homedir, "RawQC"))
+checkFile[[1]][correlation < 0,]
+fwrite(checkFile[[1]], file.path("./OverviewFiles/ArrayCheck.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+```
+
+An example of these direction checks are shown below.
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+datatable(head(fread(file.path(homedir, "./OverviewFiles/ArrayCheck.xls") )), options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
+```
+
+In many cases, one may want to incorporate gene expression profiling data they have analyzed, or that was obtained from sources other than GEO.  This can be accomplished by formatting the data into a table of row bound differential expression analyses with the following column names: <br>
+- **GeneID**: Contains the ensembl gene ID.<br>
+- **ENTREZID**: Contains the Entrez ID.<br>
+- **SYMBOL**: Contains the gene symbol.<br>
+- **baseMean**: Obtained from DEseq2.<br>
+- **logFC**: The log2 fold change, Obtained from DEseq2.<br>
+- **lfcSE**: Obtained from DEseq2.<br>
+- **stat**: Obtained from DEseq2.<br>
+- **pvalue**: The p-value.<br>
+- **FDR**: The adjusted p-value Obtained from DEseq2.<br>
+- **Subset_Comparison**: The treatment and reference names in the following format: [treatment-reference]<br>
+This file, along with the count data is stored in the `ExternalAnalyzed` directory with the following naming convention: [ID]\_[unique file name], or [ID]\_[CountCoding unique file name] if the file contains count data.
+
+The `ExternalDataHarmonize` function then formats these samples such that they are formatted identically to other processed samples and stores them in the `AppData` folder.  
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(org.Hs.eg.db); library(org.Mm.eg.db); library(org.Rn.eg.db)
+ExternalDataHarmonize(Fpath = file.path(homedir, "ExternalAnalyzed"),
+                      OutPath = file.path(homedir, "AppData"))
+```
+
+Following sample processing, all Differential expression data is stored in a [SummarizedExperiment](https://www.bioconductor.org/packages/devel/bioc/vignettes/SummarizedExperiment/inst/doc/SummarizedExperiment.html) object. This is accomplished using the `DESEGenerate` function which first checks to see if samples are incorporated into a pe-existing database (in the event that some samples have already been processed), and then adds new data sets to a database.  If a database has not been previously created, all DEG samples are incorporated into a newly generated differential expression data base (DEDB).  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+(DESE <- DESEGenerate(DEGDatapath=file.path(homedir, "AppData"), SEPath = file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds") ))
+(DESE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds")))
+```
+
+Once the DEDB has been created, a SummarizedExperiment object is created to store the raw data. This is done in several steps.
+
+First, GTF files for Human and Mouse species are downloaded. (currently only Human and Mouse are supported).
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+options(timeout=24000); getOption('timeout')
+download.file("https://ftp.ensembl.org/pub/current_gtf/homo_sapiens/Homo_sapiens.GRCh38.111.chr.gtf.gz",
+              destfile = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"), quiet = FALSE)
+download.file("https://ftp.ensembl.org/pub/current_gtf/mus_musculus/Mus_musculus.GRCm39.111.chr.gtf.gz",
+              destfile = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz"), quiet = FALSE)
+```
+
+Next, all raw data is compiled into a single data frame. Duplicated gene names, usually occurring because of because multiple probe sets measuring different locations of a gene, are averaged for each individual sample. If duplicated column names, exist, a correlation analysis is performed between the data in the identical column names. If they are different, a unique name is assigned to the new column by appending ".99" to the end of the column name.  If they are the same, only the original sample is retained. After each dataset incorporation, the file is written to the `outPath` directory. If a failure occurs, the corpiration can be continued by restarting the function and adjusting the `StartAt` argument to reflect the new start position. In some instances, a computer may sync a file to a cloud storage account rendering it un-writable for a period of time.  If this is the case, a pause can be added at the end of each iteration as specified by the `sleep` argument.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+RawDataCompile(Fpath = file.path(homedir, "AppData"),
+               outPath = file.path("./ProcessFiles/RawData.txt"),
+               StartAt = 1,
+               sleep = 60,
+               GTFHumanFpath = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"),
+               GTFMouseFpath = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz") )
+RawArrayComplete <- fread(file.path("./ProcessFiles/RawData.txt"))
+```
+
+Then, a meta data is created using the meta information stored in the `RunInfo` and `ArrayMetaData` directories.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+metaDF <- MetDataCompile(RNAseqFilePath= file.path("RunInfo"), ArrayFilePath= file.path("ArrayMetaData"), overview=overview)
+#### Save meta data data frame ####
+metaDF$rownames <- rownames(metaDF)
+fwrite(metaDF, file.path(homedir, "OverviewFiles", "metaData.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+metaDF <- as.data.frame(fread(file.path(homedir, "OverviewFiles", "metaData.xls")))
+rownames(metaDF) <- metaDF$rownames
+metaDF$rownames <- NULL
+```
+
+Finally, a raw data SummarizedExperiment object is created. 
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(SummarizedExperiment)
+RawSEList <- GenerateRawSE(df = metaDF, ArrayDT=RawArrayComplete, overview=overview)
+names(RawSEList)
+saveRDS(RawSEList[["RawSE"]], file=file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
+RawSE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
+assay(RawSEList[["RPKMSE"]])[1:5,1:5]; head(rowData(RawSEList[["RPKMSE"]])); head(colData(RawSEList[["RPKMSE"]]))
+saveRDS(RawSEList[["RPKMSE"]], file=file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
+expression_norm <- readRDS(file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
+assay(expression_norm)[1:5,1:5]; head(rowData(expression_norm)); head(colData(expression_norm))
+```
+
+If samples were added without using the overview file using the `ExternalDataHarmonize` function, the following section of code can append this sample information onto the overview file which is then written out as a .xls file.  After some manual editing, the file can then be saved as a .csv file and the original file can be overwritten.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+overview <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
+overview <- overview[!ID == "",]
+IntDT <- data.table(ID = gsub("_.+", "", names(assays(DESE))), FCColumnNames = gsub("^.+?_", "", names(assays(DESE))))
+IntDT <- IntDT[!(IntDT$ID %in% overview$ID),]
+IntDT[, `:=`(DataType = "BulkExpressionProfile",	Technology = "RNAseq", DownloadMetaData = FALSE, DownloadRawData = FALSE, GEO2R = FALSE)]
+overview <- rbind(overview, IntDT, fill = TRUE)
+#### overwrite previous file ####
+fwrite(overview, file.path(homedir, "OverviewFiles", "GEODataOverview3.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+#### Update date and other columns by hand ####
+```
+
+# Proteomic data workflow
+
+Proteomic data information is also incorporated using information stored in the overview file. The first step to processing this data is to load the oversiew file and filter it to only the records containing proteomic samples.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+overview <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
+overviewpProteomics <- overview[DataType == "Proteomic",]
+```
+
+The next step is to download the proteomic data, in this case from [proteomeexchange](https://www.proteomexchange.org/). the `ProteomicsDataDownload` function can be set up to download the files os selected datasets and distribute them into individual directories labeled according to their `PXD-` ID.  Note, the exampe datasets are 
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+devtools::install_version("dbplyr", version = "2.3.4")
+ProteomicsDataDownload(path = file.path(homedir, "Proteomic_1"), DS = overviewpProteomics$ID)
+```
+
+Once downloaded, each proteomics file must be formatted because repositories do not use a consistent tabular schema. `FormatMaxQuant()` currently supports only the bundled example datasets. The resulting harmonized data are stored in the `Proteomic_2` directory.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+MZList <- FormatMaxQuant(path = file.path(homedir, "Proteomic_1"))
+names(MZList)
+proteomicMZSave(MZList=MZList, path = file.path(homedir, "Proteomic_2"))
+```
+
+Next, a experimental design table is generated that contains the information describing treatment and reference samples to be used in differential expression calculations.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+DesignDT <- DesignMatrixFromNames(Fpath = file.path(homedir, "Proteomic_2"))
+fwrite(DesignDT, file.path(homedir, "OverviewFiles", "DesignMatrix.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+```
+
+An example of this table is shown below:
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+datatable(head(fread(file.path(homedir, "OverviewFiles", "DesignMatrix.xls"))), options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
+```
+
+Once the data is downloaded and formatted, data are loaded into a list of SummarizedExperiment objects (one list element for each data set). The remainder of the functions in this workflow are wrapper functions for the functions housed in the [DEP](https://bioconductor.org/packages/devel/bioc/vignettes/DEP/inst/doc/DEP.html) bioconductor package that enable batch processing of samples.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(SummarizedExperiment)
+tissueSplitList <- ProtSELoad(DesignDT=DesignDT, Fpath=file.path(homedir, "Proteomic_2"))
+assay(tissueSplitList[[2]]); rowData(tissueSplitList[[2]])
+```
+
+Compile data together to assess protein expression level and overall protein abundance.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+TotMel <- RowDataCompile(tissueSplitList=tissueSplitList)
+TotMel
+```
+
+Filter for proteins that are identified in all replicates of at least one condition
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+dataFiltList <- DataFilter(dataSeList=tissueSplitList, thr = 0)
+assay(dataFiltList[[3]])
+rowData(dataFiltList[[3]])
+```
+
+Perform N-peptides per protein cutoff
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+PepCutOffList <- NPeptideThreshold(dataFiltList=dataFiltList, Npeptides = 2)
+PepCutOffList[[2]]                  # return the percent of records remaining
+dataPepCutOff <- PepCutOffList[[1]] # return the data
+colnames(assay(dataPepCutOff[[1]]))
+```
+
+Perform normalization: Since normalization is not performed internally with the DEP package, users must select individual normalizations methods. In order to facilitate this process, the `MultiNormalization` function performs `mean`, `median`, `vsn`, `vsn using the DEP function`, `loess`, `rlr` and `smad` normalization separately and store each result in a list element.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+MultiNormalizeList <- MultiNormalization(dataPepCutOff=dataPepCutOff)
+names(MultiNormalizeList)
+```
+
+Normalization density plots can then be generated to aid in the selection of a normalization method.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+densityPlotList <- densityPlotFromList(MultiNormalizeList)
+names(densityPlotList)
+densityPlotList[["mean"]]
+densityPlotList[["median"]]
+densityPlotList[["vsn"]]
+densityPlotList[["DEPvsn"]]
+densityPlotList[["loess"]]
+densityPlotList[["rlr"]]
+densityPlotList[["smad"]]
+```
+
+Onve visualized, a normalization method must be selected.  In this case, median normalization was selected and the data median normalization was prformed on is obtained and stored in the `NormalizedSE` object. 
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+NormalizedSE <- MultiNormalizeList[["median"]]
+assay(NormalizedSE[[3]])
+rowData(NormalizedSE[[3]])
+```
+
+Missing data is then imputed as described in the DEP vignette.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+#### Determine if any data sets have missing values that need to be imputed ####
+(Missing <- DetermineMissing(data=NormalizedSE))
+#### Impute missing values ####
+set.seed(1)
+NormImpAll <- DataImpute(dataFiltList = NormalizedSE, type = "MinProb")
+```
+
+finally, data sets that have less than 50 samples in them are removed as a quality control check.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+VarRMThreshList <- LowSampleCountRemove(VarRMList=NormImpAll, cut = 50)
+```
+
+Of the remaining samples, fold changes are calculated on the imputed, and normalized data.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+FCcut <- log2(1); Pcut <- 0.05; sigCol = "BHCorrection" # "p.val" "p.adj" "BHCorrection"
+Comparisons <- fread(file.path(homedir, "OverviewFiles", "ProteomicComparisons.xls"), header = TRUE)
+compList2 <- Comparisons$Comparison
+names(compList2) <- Comparisons$dataset
+compList2 <- compList2[names(compList2) %in% names(VarRMThreshList)]
+dataDiffNorm <- DEAnalysis(DataList = VarRMThreshList, type = "manual", ComparisonList=compList2)
+dataDiffNorm
+```
+
+These results are then saved to the `Proteomic_3` directory.  
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+SaveToProteomicDB(SEList=dataDiffNorm, Path=file.path(homedir, "Proteomic_3"))
+```
+
+Finally, the proteomic data base is created that is ultimately loaded into the app.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+Proteins <- ProteomicProteinName(fPath = "./Proteomic_3")
+saveRDS(Proteins, file.path(homedir, "OverviewFiles", "ProteomicProteins.RDS"))
+```
+
+# Load app
+
+The `AppSetup` function is executed the first time the shiny app is deployed locally.  This function edits all of the app file paths to the directory specified in the `homedir` object. This enables it to be deployed with the `runApp` function. 
+
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+library(shiny)
+AppSetup(homedir)
+runApp("./Scripts")
+```
+
+
+
+
+
+
+
+
+
+
