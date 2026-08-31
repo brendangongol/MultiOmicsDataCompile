@@ -12,8 +12,10 @@ DESEGenerate(DEGDatapath, SEPath)
 \item{SEPath}{A file path where the compiled object is saved.}
 }
 \value{
-A \code{SummarizedExperiment} containing the compiled assays and gene
-annotations. The same object is saved to \code{SEPath}.
+A \code{SummarizedExperiment} containing one three-column assay per
+comparison and feature annotations keyed by a species-qualified stable
+identifier. The database is rebuilt deterministically and saved to
+\code{SEPath}.
 }
 \description{
 Combines harmonized transcriptomic differential-expression files into a
@@ -28,6 +30,8 @@ Other transcriptomics functions:
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
 \code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

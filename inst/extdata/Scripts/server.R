@@ -11,11 +11,20 @@ library(data.table); library(textclean); library(dplyr)
 library(ggplot2); library(plotly); library(RColorBrewer); library(stringr)
 suppressWarnings(library(DEP))
 library(grid)
+# Analysis functions live in the package so that the app and the batch
+# workflow cannot drift apart.
+library(MultiOmicsDataCompile)
 
 #### loading tables ####
 ########################
 #### Load genes ####
-homedir <- "<path to data base>"
+homedir <- getOption(
+  "MultiOmicsDataCompile.data_dir",
+  Sys.getenv("MULTIOMICS_DATA_DIR", unset = "<path to data base>")
+)
+if (!dir.exists(homedir)) {
+  stop("Set `MultiOmicsDataCompile.data_dir` or `MULTIOMICS_DATA_DIR` to a valid data directory.")
+}
 DESE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds"))
 AvailComps <- data.table(Dataset = gsub("_.+", "", names(assays(DESE))), Comparison = gsub("^.+?_", "", names(assays(DESE))) )
 genesAll <- rowData(DESE)$SYMBOL
@@ -37,6 +46,12 @@ names(metabolomicsData) <- c("Basal_Artery_Basal_Vein", "Insulin_Artery_Insulin_
 #### Proteomics tab ####
 DEProtSE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedProtExp_DB.rds"))
 Proteins <- readRDS(file.path(homedir, "OverviewFiles", "ProteomicProteins.RDS"))
+
+AssaySymbols <- function(se, assay_matrix) {
+  symbols <- as.character(rowData(se)$SYMBOL[match(rownames(assay_matrix), rownames(se))])
+  symbols[is.na(symbols) | !nzchar(symbols)] <- rownames(assay_matrix)[is.na(symbols) | !nzchar(symbols)]
+  toupper(symbols)
+}
 
 ###############################
 #### Summary plot function ####
@@ -136,7 +151,7 @@ DETableDisplay <- function(DESE, Dataset, Comparison, return = "NA"){
     Fname <- paste(Dataset, Comparison, sep = "_")
     assaySelect <- assays(DESE)[grepl(Fname, gsub("-", "_", names(assays(DESE))))]
     tempDT <- assaySelect[[1]]
-    tempDT$SYMBOL <- toupper(row.names(tempDT))
+    tempDT$SYMBOL <- AssaySymbols(DESE, tempDT)
     tempDT <- as.data.table(tempDT)
     FDT <- tempDT[complete.cases(tempDT),]
     if(return == "Genes"){
@@ -147,13 +162,12 @@ DETableDisplay <- function(DESE, Dataset, Comparison, return = "NA"){
 #### Volcano plot function ####
 ###############################
 VolcanoPlotR <- function(DESE,Dataset,Comparison,sigColSelect,FCcut,Pcut,filterBy,Gene){
-  if(FCcut >= 1){
-    FCcut <- log2(FCcut)
+  if(is.numeric(FCcut) && length(FCcut) == 1 && is.finite(FCcut) && FCcut >= 0){
     if(!Dataset == "Select Dataset"){
       Fname <- paste(Dataset, Comparison, sep = "_")
       assaySelect <- assays(DESE)[grepl(Fname, gsub("-", "_", names(assays(DESE))))]
       tempDT <- assaySelect[[1]]
-      tempDT$SYMBOL <- toupper(row.names(tempDT))
+      tempDT$SYMBOL <- AssaySymbols(DESE, tempDT)
       tempDT <- as.data.table(tempDT)
       tempDT <- tempDT[complete.cases(tempDT),]
       tempDT[,Selected:= "Not selected"]
@@ -203,10 +217,10 @@ VolcanoPlotR <- function(DESE,Dataset,Comparison,sigColSelect,FCcut,Pcut,filterB
             theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
                   panel.background = element_blank(), axis.line = element_line(colour="black")) +
             geom_point(data=subset(tempDT, !SYMBOL == toupper(Gene)),
-                       aes(x=logFC,y=-log10(Pvalue) ),
+                       aes(x=logFC,y=-log10(AdjPValue) ),
                        shape=21, size=2, colour="gray", fill = "gray") +
             geom_point(data=subset(tempDT, SYMBOL == toupper(Gene)),
-                       aes(x=logFC,y=-log10(Pvalue) ),
+                       aes(x=logFC,y=-log10(AdjPValue) ),
                        shape=21, size=3, colour="black", fill = "#E31A1C") }}
       return(p) } } }
 
@@ -214,13 +228,12 @@ VolcanoPlotR <- function(DESE,Dataset,Comparison,sigColSelect,FCcut,Pcut,filterB
 #### DEG count function ####
 ############################
 DEGcount <- function(DESE = DESE, Dataset,Comparison,sigColSelect = "Pvalue",filterBy,Gene,FCcut,Pcut){
-  if(FCcut >= 1){
-    FCcut <- log2(FCcut)
+  if(is.numeric(FCcut) && length(FCcut) == 1 && is.finite(FCcut) && FCcut >= 0){
     if(!Dataset == "Select Dataset"){
       Fname <- paste(Dataset, Comparison, sep = "_")
       assaySelect <- assays(DESE)[grepl(Fname, gsub("-", "_", names(assays(DESE)))   )  ]
       tempDT <- assaySelect[[1]]
-      tempDT$SYMBOL <- row.names(tempDT)
+      tempDT$SYMBOL <- AssaySymbols(DESE, tempDT)
       tempDT <- as.data.table(tempDT)
       tempDT <- tempDT[complete.cases(tempDT),]
       #### update colors ####
@@ -243,15 +256,17 @@ DEGcount <- function(DESE = DESE, Dataset,Comparison,sigColSelect = "Pvalue",fil
 #### Multi-Study Heatmap function ####
 ######################################
 CrossDataHeat <- function(DESE, GeneSelection, Dataselection, ScaleData, plottype = "Heat", FCCutoff, PCutoff, SigCol){
-  if(FCCutoff >= 1){
-    FCCutoff <- log2(FCCutoff)
+  if(is.numeric(FCCutoff) && length(FCCutoff) == 1 && is.finite(FCCutoff) && FCCutoff >= 0){
     if(!is.null(Dataselection)){
       #### Select Genes ####
       SEsub <- DESE[rowData(DESE)$SYMBOL %in% GeneSelection]
       #### select assays ####
       assaySelect <- assays(SEsub)[names(assays(SEsub)) %in% Dataselection]
+      if (!length(assaySelect)) return(NULL)
       #### loop through remaining assays and combine results ####
+      feature_labels <- make.unique(AssaySymbols(SEsub, assaySelect[[1]]))
       for(i in seq_along(assaySelect)){ dat <- assaySelect[[i]]
+      rownames(dat) <- feature_labels
       colnames(dat) <- paste(colnames(dat), names(assaySelect)[i], sep = "_")
       if(i == 1){ compiledDF <-dat
       } else { compiledDF <- merge(compiledDF, dat, by = "row.names", all = TRUE)
@@ -424,81 +439,85 @@ CrossDataHeat <- function(DESE, GeneSelection, Dataselection, ScaleData, plottyp
 #### Check NA boxplot NA values ####
 ####################################
 check_na = function(raw_df, select_gene, select_data){
-  samples_gse = paste(select_data, collapse = "|")
-  print(samples_gse)
-  df_subset = raw_df[rowData(raw_df)$SYMBOL%in%select_gene, grepl(samples_gse, colnames(raw_df))]
-  print(df_subset)
-  return(any(is.na(df_subset%>%assay())))
+  if(is.null(select_gene) || !length(select_gene)) return(FALSE)
+  if(is.null(select_data) || !length(select_data)) return(FALSE)
+  samples <- colnames(raw_df)[colData(raw_df)$dataset %in% select_data]
+  features <- which(rowData(raw_df)$SYMBOL %in% select_gene)
+  if(!length(samples) || !length(features)) return(TRUE)
+  any(is.na(assay(raw_df)[features, samples, drop = FALSE]))
 }
 
-#############################################
-#### Violin plot of FPKM Single data set ####
-#############################################
+##########################################################
+#### Shared reshaping for the expression violin plots ####
+##########################################################
+#### Sample annotations are attached only when the compiled metadata
+#### actually contain them, so a missing optional field cannot break a plot.
+ViolinSampleColumns <- c(
+  "dataset", "rawcolumnnames", "condition", "disease", "tissue",
+  "species", "technology"
+)
+
+ExpressionLongFormat <- function(input_df, select_gene, samples){
+  features <- which(rowData(input_df)$SYMBOL %in% select_gene)
+  if(!length(features) || !length(samples)) return(NULL)
+  long <- MeltExpressionAssay(
+    input_df[features, samples],
+    assay_name = "Expression",
+    row_columns = "SYMBOL",
+    col_columns = ViolinSampleColumns
+  )
+  long <- long[!is.na(long$Expression), , drop = FALSE]
+  if(!nrow(long)) return(NULL)
+  if(!"condition" %in% names(long)) long$condition <- "All samples"
+  long$condition[is.na(long$condition)] <- "Unassigned"
+  if(!"dataset" %in% names(long)) long$dataset <- "All datasets"
+  long
+}
+
+ViolinPalette <- function(n){
+  colorRampPalette(brewer.pal(9, "Set3"))(max(as.integer(n), 1L))
+}
+
+################################################################
+#### Violin plot of standardized expression: single dataset ####
+################################################################
 box_violin_plot_v2.single = function(input_df, select_gene, select_proj, log10){
-  # remove the NA ones, if no NA, ignore this step
-  project_meta = colData(input_df)[,c("disease", "organism", "platform", "dataset", "rawcolumnnames", "cell_type", "tissue_type", "cell_line", "condition")]
-  project_meta = project_meta[!is.na(project_meta$dataset),]
-  raw_df_select_sample = project_meta%>%as.data.frame()%>%dplyr::filter(dataset%in%select_proj)%>%dplyr::select(rawcolumnnames)%>%unlist()%>%as.vector()
-  # subset the data
-  raw_df_summarized = input_df[rowData(input_df)$SYMBOL%in%select_gene, raw_df_select_sample]
-  raw_df_melt = meltAssay(raw_df_summarized, assay_name="Expression", add_row_data = "SYMBOL", add_col_data = c("dataset", "rawcolumnnames", "condition"))%>%as.data.frame() # assay.type = "FPKM",
-  # replace NAs with 0
-  raw_df_melt = na.omit(raw_df_melt)
-  # color palette
-  box_count = length(unique(raw_df_melt$condition))
-  coul = brewer.pal(9, "Set3")
-  coul = colorRampPalette(coul)(box_count)
-  # log transformation
-  if(log10){
-    raw_df_melt$Expression = log10(raw_df_melt$Expression+1)
-    ylab_t = expression(~log[10]~(NormalizedExpression))
-  } else{ ylab_t = "NormalizedExpression" }
-  p=ggplot(data = raw_df_melt, aes(x=condition, y=Expression, fill=condition))+
-    geom_violin(scale = "width", trim = T, alpha = 0.7)+
-    geom_boxplot(outlier.shape = NA,coef = 0, fill="gray", width=0.3)+
+  samples <- colnames(input_df)[colData(input_df)$dataset %in% select_proj]
+  long <- ExpressionLongFormat(input_df, select_gene, samples)
+  if(is.null(long)) return(NULL)
+  ggplot(data = long, aes(x = condition, y = Expression, fill = condition))+
+    geom_violin(scale = "width", trim = TRUE, alpha = 0.7)+
+    geom_boxplot(outlier.shape = NA, coef = 0, fill = "gray", width = 0.3)+
     coord_flip()+
-    ylab(ylab_t)+
+    ylab("Within-dataset expression z-score")+
     xlab("")+
     theme_bw() +
     theme(panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
           axis.text.y = element_text(colour = 'black', size = 10),
-          axis.text.x = element_text(colour = 'black', size = 10, vjust = 1, hjust=1),
+          axis.text.x = element_text(colour = 'black', size = 10, vjust = 1, hjust = 1),
           legend.position = "none",
           strip.text.y = element_text(angle = 0, size = 10))+
-    stat_boxplot(geom='errorbar', linetype=1, width=0.2, position = "dodge2")+
-    scale_fill_manual(values= coul) +
-    facet_grid(SYMBOL~., scales = "free", space = "free", drop = F)+
+    stat_boxplot(geom = 'errorbar', linetype = 1, width = 0.2, position = "dodge2")+
+    scale_fill_manual(values = ViolinPalette(length(unique(long$condition)))) +
+    facet_grid(SYMBOL~., scales = "free", space = "free", drop = FALSE)+
     scale_x_discrete(drop = FALSE)
-  print(p)
-  return(p)
 }
 
-############################################
-#### Violin plot of FPKM Multi data set ####
-############################################
+##################################################################
+#### Violin plot of standardized expression: multiple datasets ####
+##################################################################
 box_violin_plot_v2.multi = function(input_df, overview_file, select_gene, select_disease, select_tech, select_tissue, log10){
-  # remove the NA ones, if no NA, ignore this step
-  project_meta = colData(input_df)[,c("disease", "organism", "platform", "dataset", "rawcolumnnames", "cell_type", "tissue_type", "cell_line", "condition")]
-  project_meta = project_meta[!is.na(project_meta$dataset),]
   select_group = overview_file%>%dplyr::filter(Disease%in%select_disease & Technology%in%select_tech & Tissue%in%select_tissue)%>%dplyr::select(ID)%>%unlist%>%as.vector()%>%unique()
-  raw_df_select_sample = project_meta%>%as.data.frame()%>%dplyr::filter(dataset%in%select_group)%>%dplyr::select(rawcolumnnames)%>%unlist()%>%as.vector()
-  raw_df_summarized = input_df[rowData(input_df)$SYMBOL%in%select_gene,raw_df_select_sample]
-  raw_df_melt = meltAssay(raw_df_summarized, assay_name="Expression", add_row_data = "SYMBOL", add_col_data = c("dataset", "rawcolumnnames", "condition", "facet_name"))%>%as.data.frame()
-  raw_df_melt = na.omit(raw_df_melt)
-  # color palette
-  box_count = length(unique(raw_df_melt$condition))
-  coul = brewer.pal(9, "Set3")
-  coul = colorRampPalette(coul)(box_count)
-  # log transformation
-  if(log10){
-    raw_df_melt$Expression = log10(raw_df_melt$Expression+1)
-    ylab_t = expression(~log[10]~(NormalizedExpression))
-  } else{ ylab_t = "NormalizedExpression" }
-  p=ggplot(data = raw_df_melt, aes(x=condition, y=Expression, fill=condition))+
-    geom_violin(scale = "width", trim = T, alpha = 0.7)+
-    geom_boxplot(outlier.shape = NA,coef = 0, fill="gray", width=0.3)+
-    ylab(ylab_t)+
+  samples <- colnames(input_df)[colData(input_df)$dataset %in% select_group]
+  long <- ExpressionLongFormat(input_df, select_gene, samples)
+  if(is.null(long)) return(NULL)
+  #### One panel per dataset ####
+  long$facet_name <- long$dataset
+  ggplot(data = long, aes(x = condition, y = Expression, fill = condition))+
+    geom_violin(scale = "width", trim = TRUE, alpha = 0.7)+
+    geom_boxplot(outlier.shape = NA, coef = 0, fill = "gray", width = 0.3)+
+    ylab("Within-dataset expression z-score")+
     xlab("")+
     theme_bw() +
     theme(panel.grid.major = element_blank(),
@@ -507,135 +526,47 @@ box_violin_plot_v2.multi = function(input_df, overview_file, select_gene, select
           axis.text.x = element_text(colour = 'black', size = 10),
           legend.position = "none",
           strip.text.y = element_text(angle = 0, size = 10))+
-    stat_boxplot(geom='errorbar', linetype=1, width=0.2, position = "dodge2")+
-    scale_fill_manual(values= coul) +
-    facet_wrap(facet_name~., scales = "free", dir = "v", ncol= 1, strip.position="right", drop = F)
-  return(p)
+    stat_boxplot(geom = 'errorbar', linetype = 1, width = 0.2, position = "dodge2")+
+    scale_fill_manual(values = ViolinPalette(length(unique(long$condition)))) +
+    facet_wrap(~facet_name, scales = "free", dir = "v", ncol = 1, strip.position = "right")
 }
 
 #################################
 #### Load proteomics dataset ####
 #################################
+#### Loading and significance annotation both come from the package so that
+#### the app and the batch workflow apply identical rules.
 ProteomicsDataLoad <- function(Path, Fname, alpha, lfc, sigCol){
-  lfc <- log2(lfc)
-  #### Load proteomics summarized experiment object from DB
-  SelectedList <- list()
-  SelectedList[[1]] <- readRDS(file.path(Path, paste(Fname, ".rds", sep = "")))
-  names(SelectedList) <- gsub(".rds", "", Fname)
-  #### Proteomics Denote DE samples ####
-  dataDiff <- SelectedList
-  dep <- list()
-  for(i in seq_along(SelectedList)){ dep[[i]] <- add_rejections2(SelectedList[[i]], alpha = alpha, lfc = lfc, sigCol=sigCol) }
-  names(dep) <- names(SelectedList)
-  return(dep)
-}
-add_rejections2 <- function (diff=dataDiff[[i]], alpha = 0.05, lfc = 1, sigCol="p.adj")  {
-  if (is.integer(alpha))
-    alpha <- as.numeric(alpha)
-  if (is.integer(lfc))
-    lfc <- as.numeric(lfc)
-  assertthat::assert_that(inherits(diff, "SummarizedExperiment"),
-                          is.numeric(alpha), length(alpha) == 1, is.numeric(lfc),
-                          length(lfc) == 1)
-  row_data <- rowData(diff, use.names = FALSE) %>% as.data.frame()
-  if (any(!c("name", "ID") %in% colnames(row_data))) {
-    stop("'name' and/or 'ID' columns are not present in '",
-         deparse(substitute(diff)), "'\nRun make_unique() and make_se() to obtain the required columns",
-         call. = FALSE) }
-  if (length(grep("_p.adj|_diff", colnames(row_data))) < 1) {
-    stop("'[contrast]_diff' and/or '[contrast]_p.adj' columns are not present in '",
-         deparse(substitute(diff)), "'\nRun test_diff() to obtain the required columns",
-         call. = FALSE) }
-  cols_p <- grep(sigCol, colnames(row_data))
-  cols_diff <- grep("_diff", colnames(row_data))
-  if (length(cols_p) == 1) {
-    rowData(diff)$significant <- row_data[, cols_p] <= alpha & abs(row_data[, cols_diff]) >= lfc
-    rowData(diff)$contrast_significant <- rowData(diff, use.names = FALSE)$significant
-    colnames(rowData(diff))[ncol(rowData(diff, use.names = FALSE))] <- gsub(sigCol, "significant", colnames(row_data)[cols_p]) }
-  if (length(cols_p) > 1) {
-    p_reject <- row_data[, cols_p] <= alpha
-    p_reject[is.na(p_reject)] <- FALSE
-    diff_reject <- abs(row_data[, cols_diff]) >= lfc
-    diff_reject[is.na(diff_reject)] <- FALSE
-    sign_df <- p_reject & diff_reject
-    sign_df <- cbind(sign_df, significant = apply(sign_df, 1, function(x) any(x)))
-    colnames(sign_df) <- gsub(paste("_", sigCol, sep = ""), "_significant", colnames(sign_df))
-    sign_df <- cbind(name = row_data$name, as.data.frame(sign_df))
-    rowData(diff) <- merge(rowData(diff, use.names = FALSE),
-                           sign_df, by = "name") }
-  return(diff)
+  SelectedList <- ProteomicSELoad(Path = Path, Fname = paste0(Fname, ".rds"))
+  SigDEAnnotate(SelectedList, alpha = alpha, lfc = lfc, sigCol = sigCol)
 }
 
 ##########################################
 #### Proteomics Volcano plot function ####
 ##########################################
-VolcanoPlot <- function(DEPList = DEPList, addNames = TRUE, sigCol){
-  if(sigCol == "p.adj"){adj <- TRUE; BHadj <- FALSE
-  } else if(sigCol == "p.val"){ adj <- FALSE; BHadj <- FALSE
-  } else if(sigCol == "BHCorrection"){ adj <- FALSE; BHadj <- TRUE}
-  contrasts <- colnames(rowData(DEPList[[1]]))[!colnames(rowData(DEPList[[1]])) %in% c("name","Protein.IDs","Gene.names","Description","Numberofpeptides","ID","significant")]
-  contrasts <- unique(mgsub(contrasts, c("_CI.L", "_CI.R", "_diff", "_p.adj", "_p.val", "_BHCorrection", "_significant"), c("", "", "", "", "", "", "")))
-  contrasts <- contrasts[grepl("_vs_", contrasts)]
+#### Contrast names are read from the stored row data because one saved
+#### experiment can hold several comparisons. Plotting itself is delegated to
+#### MultiOmicsDataCompile::plot_volcano2().
+ProteomicVolcanoPlots <- function(DEPList, addNames = TRUE, sigCol){
+  adjusted <- identical(sigCol, "p.adj")
+  BHadjusted <- identical(sigCol, "BHCorrection")
   PlotList <- list()
   for(i in seq_along(DEPList)){
-    comps <- contrasts
-    for(b in seq_along(comps)){
-      tempLit <- list()
-      nam <- paste(names(DEPList)[i], comps[b], sep = "-")
-      tempLit[[1]] <- plot_volcano2(DEPList[[i]], contrast = comps[b], label_size = 3, add_names = addNames, adjusted = adj, BHadjusted = BHadj) + ggtitle(nam)
-      names(tempLit) <- nam
-      PlotList <- c(PlotList, tempLit) } }
+    annotations <- colnames(rowData(DEPList[[i]]))
+    contrasts <- unique(mgsub(
+      annotations[grepl("_vs_", annotations)],
+      c("_CI.L", "_CI.R", "_diff", "_p.adj", "_p.val", "_BHCorrection", "_significant"),
+      rep("", 7)
+    ))
+    for(b in seq_along(contrasts)){
+      nam <- paste(names(DEPList)[i], contrasts[b], sep = "-")
+      PlotList[[nam]] <- plot_volcano2(
+        DEPList[[i]], contrast = contrasts[b], label_size = 3,
+        add_names = addNames, adjusted = adjusted, BHadjusted = BHadjusted
+      ) + ggtitle(nam)
+    }
+  }
   return(PlotList)
-}
-plot_volcano2 <- function (dep, contrast, label_size = 3, add_names = TRUE, adjusted = FALSE, plot = TRUE, BHadjusted) {
-  if (is.integer(label_size)){
-    label_size <- as.numeric(label_size)
-    assertthat::assert_that(inherits(dep, "SummarizedExperiment"),
-                            is.character(contrast), length(contrast) == 1, is.numeric(label_size),
-                            length(label_size) == 1, is.logical(add_names), length(add_names) ==
-                              1, is.logical(adjusted), length(adjusted) == 1, is.logical(plot),
-                            length(plot) == 1) }
-  row_data <- rowData(dep, use.names = FALSE)
-  if (any(!c("name", "ID") %in% colnames(row_data))) {
-    stop(paste0("'name' and/or 'ID' columns are not present in '", deparse(substitute(dep)), "'.\nRun make_unique() to obtain required columns."), call. = FALSE)
-  }
-  if (length(grep("_p.adj|_diff", colnames(row_data))) < 1) {
-    stop(paste0("'[contrast]_diff' and '[contrast]_p.adj' columns are not present in '", deparse(substitute(dep)), "'.\nRun test_diff() to obtain the required columns."), call. = FALSE)
-  }
-  if (length(grep("_significant", colnames(row_data))) < 1) {
-    stop(paste0("'[contrast]_significant' columns are not present in '", deparse(substitute(dep)), "'.\nRun add_rejections() to obtain the required columns."), call. = FALSE)
-  }
-  if (length(grep(paste(contrast, "_diff", sep = ""), colnames(row_data))) == 0) {
-    valid_cntrsts <- row_data %>% data.frame() %>% select(ends_with("_diff")) %>%
-      colnames(.) %>% gsub("_diff", "", .)
-    valid_cntrsts_msg <- paste0("Valid contrasts are: '", paste0(valid_cntrsts, collapse = "', '"), "'")
-    stop("Not a valid contrast, please run `plot_volcano()` with a valid contrast as argument\n", valid_cntrsts_msg, call. = FALSE)
-  }
-  diff <- grep(paste(contrast, "_diff", sep = ""), colnames(row_data))
-  if (adjusted) { p_values <- grep(paste(contrast, "_p.adj", sep = ""), colnames(row_data))
-  } else if(BHadjusted){ p_values <- grep(paste(contrast, "_BHCorrection", sep = ""), colnames(row_data))
-  } else { p_values <- grep(paste(contrast, "_p.val", sep = ""), colnames(row_data)) }
-  signif <- grep(paste(contrast, "_significant", sep = ""), colnames(row_data))
-  df <- data.frame(x = row_data[, diff], y = -log10(row_data[,p_values]), significant = row_data[, signif], name = row_data$name) %>%
-    filter(!is.na(significant)) %>% arrange(significant)
-  name1 <- gsub("_vs_.*", "", contrast)
-  name2 <- gsub(".*_vs_", "", contrast)
-  p <- ggplot(df, aes(x, y)) + geom_vline(xintercept = 0) +
-    geom_point(aes(col = significant)) + geom_text(data = data.frame(), aes(x = c(Inf, -Inf), y = c(-Inf, -Inf), hjust = c(1, 0), vjust = c(-1, -1), label = c(name1, name2), size = 5,
-                                                                            fontface = "bold")) + labs(title = contrast, x = expression(log[2] ~ "Fold change")) + theme_DEP1() + theme(legend.position = "none") +
-    scale_color_manual(values = c(`TRUE` = "black", `FALSE` = "grey"))
-  if (add_names) { p <- p + ggrepel::geom_text_repel(data = filter(df, significant), aes(label = name), size = label_size, box.padding = unit(0.1, "lines"), point.padding = unit(0.1, "lines"), segment.size = 0.5) }
-  if (adjusted) { p <- p + labs(y = expression(-log[10] ~ "Adjusted p-value"))
-  } else if(BHadjusted){  p <- p + labs(y = expression(-log[10] ~ "BH Adjusted p-value"))
-  } else { p <- p + labs(y = expression(-log[10] ~ "P-value")) }
-  if (plot) { return(p)
-  } else {
-    df <- df %>% select(name, x, y, significant) %>% arrange(desc(x))
-    colnames(df)[c(1, 2, 3)] <- c("protein", "log2_fold_change", "p_value_-log10")
-    if (adjusted) { colnames(df)[3] <- "adjusted_p_value_-log10" }
-    if (BHadjusted) { colnames(df)[3] <- "BH_adjusted_p_value_-log10" }
-    return(df)
-  }
 }
 
 ########################################################################
@@ -1013,7 +944,7 @@ server <- function(input, output, session) {
     if(anyna_single()){"Some of the selected gene(s) not available in the selected dataset"}
     else{"Here is the plot!"} })
 
-  violin_single=reactive({box_violin_plot_v2.single(raw_df, select_gene(), input$Dataset_single, input$log_single)})
+  violin_single=reactive({box_violin_plot_v2.single(raw_df, select_gene(), input$Dataset_single, FALSE)})
 
   output$contents_single = renderPlot(violin_single())
 
@@ -1038,7 +969,7 @@ server <- function(input, output, session) {
     if(anyna_multi()){"The selected gene not available in some of the selected dataset(s)"}
     else{"Here is the plot!"} })
 
-  violin_multi=reactive({box_violin_plot_v2.multi(raw_df, overview, input$Gene_multi,  select_dis.multi(), select_tech.multi(),  select_tissue.multi(), input$log_multi)})
+  violin_multi=reactive({box_violin_plot_v2.multi(raw_df, overview, input$Gene_multi,  select_dis.multi(), select_tech.multi(),  select_tissue.multi(), FALSE)})
   output$contents_multi = renderPlot(violin_multi())
 
   output$multi_data_plot <- renderUI({ plotOutput("contents_multi", height = length(select_df.multi())*150) })
@@ -1058,7 +989,7 @@ server <- function(input, output, session) {
 
   output$Proteomicvolcano <- renderPlot({
     req(input$ProteomicSubmit)
-    VolcanoPlot(DEPList = ProtData(), addNames = TRUE, sigCol = isolate(input$ProteomicHypothesisTestDE))  })
+    ProteomicVolcanoPlots(DEPList = ProtData(), addNames = TRUE, sigCol = isolate(input$ProteomicHypothesisTestDE))  })
 
   output$Proteomictext <- renderTable({
     req(input$ProteomicSubmit)

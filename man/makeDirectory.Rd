@@ -19,6 +19,7 @@ packaged application resources into them.
 }
 \seealso{
 Other setup functions:
-\code{\link[=AppSetup]{AppSetup()}}
+\code{\link[=AppSetup]{AppSetup()}},
+\code{\link[=ValidateDatasetManifest]{ValidateDatasetManifest()}}
 }
 \concept{setup functions}

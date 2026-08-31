@@ -44,7 +44,9 @@ Create volcano plots for multiple comparisons
 }
 \seealso{
 Other exploration functions:
+\code{\link[=MeltExpressionAssay]{MeltExpressionAssay()}},
 \code{\link[=densityPlotFromList]{densityPlotFromList()}},
+\code{\link[=launchMultiOmicsExplorer]{launchMultiOmicsExplorer()}},
 \code{\link[=plot_volcano2]{plot_volcano2()}}
 }
 \concept{exploration functions}

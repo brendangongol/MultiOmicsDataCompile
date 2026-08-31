@@ -5,9 +5,9 @@
 \alias{DetermineMising}
 \title{Identify datasets containing missing values}
 \usage{
-DetermineMising(data)
-
 DetermineMissing(data)
+
+DetermineMising(data)
 }
 \arguments{
 \item{data}{A list of \code{SummarizedExperiment} objects.}

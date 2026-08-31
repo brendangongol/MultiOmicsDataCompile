@@ -55,6 +55,8 @@ Other transcriptomics functions:
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
 \code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

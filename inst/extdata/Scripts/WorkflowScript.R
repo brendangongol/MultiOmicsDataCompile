@@ -4,7 +4,6 @@
 ############################
 library(MultiOmicsDataCompile); library(data.table)
 homedir <- "<path to data base>"
-setwd(homedir)
 
 #####################################
 #### Obtain platform information ####
@@ -16,8 +15,9 @@ PlatAnnotInfo <- fread(file.path(homedir, "OverviewFiles", "GEOPlatformAnnotatio
 ############################
 #### Load overview file ####
 ############################
-overview <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
-overview <- overview[GEO2R == TRUE,]
+overview_all <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
+overview_all <- as.data.table(ValidateDatasetManifest(overview_all))
+overview <- overview_all[GEO2R == TRUE,]
 #### check for duplicates assay names ####
 overview$AssayNames <-gsub(" ", "", paste(overview$ID, overview$FCColumnNames, overview$Tissue, overview$Disease, sep = "_"))
 overview[duplicated(AssayNames),][!AssayNames == "__",] # check should return nothing
@@ -40,6 +40,7 @@ Compiled <- GEOCompile(DS=overview$ID,
                        writeMetaData=TRUE,
                        DBPath=file.path(homedir, "AppData"),
                        Technology = overview$Technology,
+                       Species = overview$Species,
                        renameRaw = FALSE,
                        subsetRaw = FALSE)
 
@@ -56,7 +57,7 @@ checkFile <- GEO2RDirectionCheck(DBPath=file.path(homedir, "AppData"),
                                  writeRaw=overview$DownloadRawData,
                                  RawQCPath = file.path(homedir, "RawQC"))
 checkFile[[1]][correlation < 0,]
-fwrite(checkFile[[1]], file.path("./OverviewFiles/ArrayCheck.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+fwrite(checkFile[[1]], file.path(homedir, "OverviewFiles", "ArrayCheck.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
 
 ###############################################
 #### Externally analyzed RNAseq data setup ####
@@ -65,37 +66,42 @@ library(org.Hs.eg.db); library(org.Mm.eg.db); library(org.Rn.eg.db)
 ExternalDataHarmonize(Fpath = file.path(homedir, "ExternalAnalyzed"),
                       OutPath = file.path(homedir, "AppData"))
 
-####################################################################################################
-#### Create or update Summarized experiment objects that integrate all data sets: DEG data only #### Checks for comparisons that are already in the database
-#################################################################################################### Duplicated comparisons are not deleted from "AppData"
+##############################################################################
+#### Rebuild the differential-expression SummarizedExperiment from AppData ####
+##############################################################################
 (DESE <- DESEGenerate(DEGDatapath=file.path(homedir, "AppData"), SEPath = file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds") ))
 (DESE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds")))
 
-###########################
-#### Download GTF file ####
-###########################
-options(timeout=24000); getOption('timeout')
-download.file("https://ftp.ensembl.org/pub/current_gtf/homo_sapiens/Homo_sapiens.GRCh38.111.chr.gtf.gz",
-              destfile = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"), quiet = FALSE)
-download.file("https://ftp.ensembl.org/pub/current_gtf/mus_musculus/Mus_musculus.GRCm39.111.chr.gtf.gz",
-              destfile = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz"), quiet = FALSE)
-
 #########################################
-#### Create or update Raw data files #### issue of duplicated genes here probably because of multiple probes measuring the same gene. dealt with this by averaging
+#### Create or update raw data files ####
 #########################################
-#### Add Array data ####
 RawDataCompile(Fpath = file.path(homedir, "AppData"),
-               outPath = file.path("./ProcessFiles/RawData.txt"),
+               outPath = file.path(homedir, "ProcessFiles", "RawData.txt"),
                StartAt = 1,
-               sleep = 30,
-               GTFHumanFpath = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"),
-               GTFMouseFpath = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz") )
-RawArrayComplete <- fread(file.path("./ProcessFiles/RawData.txt"))
+               overview = overview_all)
+RawArrayComplete <- fread(file.path(homedir, "ProcessFiles", "RawData.txt"))
+
+##################################################################
+#### Derive the sample conditions required by GenerateRawSE() ####
+##################################################################
+#### Conditions come from the manifest ComparisonVector, which positions one
+#### character per sample of the stored raw matrix, so they are taken from an
+#### explicit comparison code rather than inferred from sample order. Review
+#### this table before continuing: samples that every comparison excludes are
+#### labelled "Unassigned".
+conditions <- SampleConditions(DBPath = file.path(homedir, "AppData"),
+                               overview = overview_all)
+fwrite(conditions, file.path(homedir, "OverviewFiles", "SampleConditions.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
 
 ############################################
 #### Create meta data for Raw data file #### #### run check ####
 ############################################
-metaDF <- MetDataCompile(RNAseqFilePath= file.path("RunInfo"), ArrayFilePath= file.path("ArrayMetaData"), overview=overview)
+metaDF <- MetDataCompile(
+  RNAseqFilePath = file.path(homedir, "RunInfo"),
+  ArrayFilePath = file.path(homedir, "ArrayMetaData"),
+  overview = overview_all,
+  conditions = conditions
+)
 #### Save meta data data frame ####
 metaDF$rownames <- rownames(metaDF)
 fwrite(metaDF, file.path(homedir, "OverviewFiles", "metaData.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
@@ -107,12 +113,10 @@ metaDF$rownames <- NULL
 #### Create raw data summarizedExperiment object ####
 #####################################################
 library(SummarizedExperiment)
-RawSE <- GenerateRawSE(df = metaDF, ArrayDT=RawArrayComplete, overview=overview)
-names(RawSE)
-saveRDS(RawSE[["RawSE"]], file=file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
-RawSE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
-assay(RawSE)[1:5,1:5]; head(rowData(RawSE)); head(colData(RawSE))
-saveRDS(RawSE[["RPKMSE"]], file=file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
+ExpressionCollection <- GenerateRawSE(df = metaDF, ArrayDT=RawArrayComplete, overview=overview_all)
+names(ExpressionCollection)
+saveRDS(ExpressionCollection, file=file.path(homedir, "ProcessFiles", "ExpressionCollection.rds"))
+saveRDS(ExpressionCollection[["ExplorationSE"]], file=file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
 expression_norm <- readRDS(file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
 assay(expression_norm)[1:5,1:5]; head(rowData(expression_norm)); head(colData(expression_norm))
 
@@ -258,7 +262,7 @@ SaveToProteomicDB(SEList=dataDiffNorm, Path=file.path(homedir, "Proteomic_3"))
 ###############################
 #### Setup Protein name DB ####
 ###############################
-Proteins <- ProteomicProteinName(fPath = "./Proteomic_3")
+Proteins <- ProteomicProteinName(fPath = file.path(homedir, "Proteomic_3"))
 saveRDS(Proteins, file.path(homedir, "OverviewFiles", "ProteomicProteins.RDS"))
 
 ################################################################################
@@ -266,9 +270,7 @@ saveRDS(Proteins, file.path(homedir, "OverviewFiles", "ProteomicProteins.RDS"))
 #### Load app ##################################################################
 ################################################################################
 ################################################################################
-library(shiny)
-AppSetup(homedir)
-runApp("./Scripts")
+launchMultiOmicsExplorer(homedir)
 
 
 

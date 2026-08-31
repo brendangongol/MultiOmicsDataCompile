@@ -5,10 +5,19 @@
 library(shiny)
 library(plotly)
 library(shinyWidgets)
+library(data.table)
+library(dplyr)
+library(SummarizedExperiment)
 
 #### loading tables ####
 ########################
-homedir <- "<path to data base>"
+homedir <- getOption(
+  "MultiOmicsDataCompile.data_dir",
+  Sys.getenv("MULTIOMICS_DATA_DIR", unset = "<path to data base>")
+)
+if (!dir.exists(homedir)) {
+  stop("Set `MultiOmicsDataCompile.data_dir` or `MULTIOMICS_DATA_DIR` to a valid data directory.")
+}
 #### Load genes ####
 DESE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds"))
 AvailComps <- data.table(Dataset = gsub("_.+", "", names(assays(DESE))), Comparison = gsub("^.+?_", "", names(assays(DESE))) )
@@ -48,8 +57,7 @@ ui <- fluidPage(
                         fluidRow(
                           column(3, wellPanel(selectizeInput("Dataset_single", "Select Dataset:", choices = dataAll, selected = "GSE102485", multiple = FALSE),
                                               selectizeInput("Gene_single", "Select genes of interest:", choices = NULL, multiple = TRUE, width = '100%',  size = 6),
-                                              materialSwitch(inputId = "log_single",label = "Log scale"),
-                                              actionButton("Expressionsubmit", "Submit")) ),
+                                              actionButton("Expressionsubmit_single", "Submit")) ),
                           column(9, verbatimTextOutput("text_single"),
                                  uiOutput('single_data_plot'),
                                  wellPanel( radioButtons("extension_single", "Save As:", choices = c("png", "pdf", "svg"), inline = TRUE),
@@ -62,8 +70,7 @@ ui <- fluidPage(
                                                selectizeInput("Tissue_multi", "Select Tissue:", choices = tissueAll, selected = "Heart", multiple = TRUE ),
                                                selectizeInput("Tech_multi", "Select Technology:", choices = c("Array", "RNAseq"), selected = techAll, multiple = TRUE ),
                                                selectizeInput("Gene_multi", "Select gene of interest:", choices = NULL, multiple = FALSE, width = '100%',  size = 6),
-                                               materialSwitch(inputId = "log_multi",label = "Log scale"),
-                                               actionButton("Expressionsubmit", "Submit") )  ),
+                                               actionButton("Expressionsubmit_multi", "Submit") )  ),
                           column(9, verbatimTextOutput("text_multi"),
                                  uiOutput('multi_data_plot'),
                                  wellPanel( radioButtons("extension_multi", "Save As:", choices = c("png", "pdf", "svg"), inline = TRUE),
@@ -87,7 +94,7 @@ ui <- fluidPage(
                         fluidRow(verbatimTextOutput("DEMessage"),  align="center"),
                         DT::dataTableOutput("DETable") ),
 
-               tabPanel("Differntial expression - Multi-Dataset", fluid = TRUE,
+               tabPanel("Differential Expression - Multi-Dataset", fluid = TRUE,
                         markdown('##### **Overview**
                                  - Tools in this section can be used to explore the level of gene expression across a custom selection of genes and datasets. <br>
                                  - Genes can be selected by typing in the first few letters of the gene name in the `Select genes` menu and then selecting the gene of interest from the drop down menu. Alternatively,
@@ -133,7 +140,7 @@ ui <- fluidPage(
                                   plotOutput("Proteomicvolcano")  ),
                         DT::dataTableOutput("ProteomicDETable") ),
 
-               tabPanel("Differntial expression - Multi-Dataset", fluid = TRUE,
+               tabPanel("Differential Expression - Multi-Dataset", fluid = TRUE,
                         markdown('##### **Overview**
                                  - Tools in this section can be used to explore the level of gene expression across a custom selection of genes and datasets. <br>
                                  - Genes can be selected by typing in the first few letters of the gene name in the `Select genes` menu and then selecting the gene of interest from the drop down menu. Alternatively,

@@ -1,5 +1,39 @@
+# R session and history artifacts
 .Rproj.user/
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Renviron
+
+# Local package libraries
 _r-lib/
+.r-lib/
+
+# R CMD check and build output
+*.Rcheck/
 ..Rcheck/
 MultiOmicsDataCompile.Rcheck/
 MultiOmicsDataCompile_*.tar.gz
+
+# Vignette output written to the package root by build_vignettes()
+/doc/
+/Meta/
+
+# targets pipeline store (the _targets.R script itself is source)
+_targets/
+
+# Processing directories created by makeDirectory() when a workspace is
+# configured inside the repository
+/AppData/
+/ArrayMetaData/
+/DirectionCheck/
+/GEOcache/
+/ProcessFiles/
+/Proteomic_1/
+/Proteomic_3/
+/RawQC/
+
+# OS cruft
+.DS_Store
+Thumbs.db

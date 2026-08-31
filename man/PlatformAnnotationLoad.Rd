@@ -27,6 +27,8 @@ Other transcriptomics functions:
 \code{\link[=GEOCompile]{GEOCompile()}},
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

@@ -1,0 +1,131 @@
+---
+title: "Safe expression compilation and exploration"
+author: "MultiOmicsDataCompile authors"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Safe expression compilation and exploration}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Purpose
+
+`MultiOmicsDataCompile` keeps RNA-seq counts and microarray expression in
+separate per-dataset experiments. A separate `ExplorationSE` object contains
+within-dataset feature z-scores for qualitative visualization. It must not be
+used for differential-expression inference or absolute abundance comparisons
+between platforms.
+
+## Validate a dataset manifest
+
+```{r manifest}
+library(MultiOmicsDataCompile)
+
+manifest <- data.frame(
+  ID = c("RNA_EXAMPLE", "ARRAY_EXAMPLE"),
+  Technology = c("RNA-Seq", "microarray"),
+  Species = c("Homo sapiens", "Human"),
+  GEO2R = c(FALSE, FALSE),
+  stringsAsFactors = FALSE
+)
+manifest <- ValidateDatasetManifest(manifest)
+manifest[, c("ID", "Technology", "Species")]
+```
+
+## Compile expression objects
+
+This small example uses six features. Production workflows normally obtain the
+compiled table from `RawDataCompile()`.
+
+```{r compilation}
+samples <- c("RNA_A", "RNA_B", "RNA_C", "RNA_D", "ARRAY_A", "ARRAY_B")
+compiled <- data.frame(
+  FEATURE_ID = paste0("Human:", seq_len(6)),
+  SPECIES = "Human",
+  ENTREZID = as.character(seq_len(6)),
+  SYMBOL = paste0("GENE", seq_len(6)),
+  RNA_A = c(10, 20, 30, 40, 50, 60),
+  RNA_B = c(12, 18, 35, 44, 48, 61),
+  RNA_C = c(30, 40, 20, 55, 70, 80),
+  RNA_D = c(28, 44, 19, 51, 72, 84),
+  ARRAY_A = c(5.1, 6.2, 7.3, 8.4, 9.5, 10.6),
+  ARRAY_B = c(5.4, 6.0, 7.8, 8.1, 9.8, 10.2),
+  check.names = FALSE
+)
+
+sample_data <- data.frame(
+  dataset = c(rep("RNA_EXAMPLE", 4), rep("ARRAY_EXAMPLE", 2)),
+  assay.type = c(rep("RNA-Seq", 4), rep("Array", 2)),
+  rawcolumnnames = samples,
+  condition = c("control", "control", "treated", "treated", "A", "B"),
+  row.names = samples,
+  stringsAsFactors = FALSE
+)
+
+collection <- GenerateRawSE(sample_data, compiled, manifest)
+names(collection$RNAseqSE)
+names(collection$ArraySE)
+SummarizedExperiment::assayNames(collection$RNAseqSE$RNA_EXAMPLE)
+SummarizedExperiment::assayNames(collection$ExplorationSE)
+```
+
+RNA-seq conditions are always explicit. If any are missing, compilation stops
+instead of guessing group membership.
+
+## Where conditions come from
+
+Public repositories do not record a usable condition, so the batch workflow
+derives one with `SampleConditions()`. Each manifest comparison code places one
+character per sample of the stored raw matrix, making the assignment a lookup
+rather than a guess.
+
+```{r conditions}
+directory <- tempfile()
+dir.create(directory)
+saveRDS(
+  data.frame(
+    ENTREZID = c("1", "2"), SYMBOL = c("A", "B"),
+    RNA_A = c(5, 3), RNA_B = c(6, 4), RNA_C = c(9, 1), RNA_D = c(8, 2)
+  ),
+  file.path(directory, "RNA_Raw.rds")
+)
+
+SampleConditions(
+  DBPath = directory,
+  overview = data.frame(
+    ID = "RNA",
+    ComparisonVector = "0011",
+    FCColumnNames = "NASH-Ctrl_logFC,NASH-Ctrl_Pvalue,NASH-Ctrl_AdjPValue",
+    stringsAsFactors = FALSE
+  )
+)
+```
+
+Pass the result to `MetDataCompile(conditions = )` so that the compiled sample
+metadata carry a `condition` column. Samples that every comparison excludes are
+labelled `"Unassigned"` rather than assigned to a group.
+
+## RNA-seq quality summaries
+
+```{r qc, fig.width=7, fig.height=4}
+qc <- RNAseqQC(collection$RNAseqSE$RNA_EXAMPLE)
+qc$sample_metrics[, c("sample", "library_size", "detected_features")]
+qc$pca_plot
+```
+
+## Reproducible batch execution
+
+`makeDirectory()` copies a `_targets.R` template into the processing directory.
+Set `MULTIOMICS_DATA_DIR` and run `targets::tar_make()` from its `Scripts`
+directory. Expensive downloads and processing stages are then rerun only when
+their inputs or code change.
+
+## Session information
+
+```{r session-info}
+sessionInfo()
+```

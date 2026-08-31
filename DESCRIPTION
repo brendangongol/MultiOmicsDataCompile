@@ -1,7 +1,7 @@
 Package: MultiOmicsDataCompile
 Type: Package
 Title: Compile and Explore Multi-Omics Data
-Version: 0.1.0
+Version: 0.2.1
 Authors@R: c(
     person("Brendan", "Gongol", email = "8220574+brendangongol@users.noreply.github.com",
            role = c("aut", "cre")),
@@ -9,6 +9,11 @@ Authors@R: c(
     person("Xiaowen", "Chen", role = "aut"),
     person("Yang", "Liu", role = "aut")
     )
+Author: Brendan Gongol [aut, cre],
+    Xueyuan Jiang [aut],
+    Xiaowen Chen [aut],
+    Yang Liu [aut]
+Maintainer: Brendan Gongol <8220574+brendangongol@users.noreply.github.com>
 Description: Downloads, harmonizes, and batch-processes transcriptomic,
     proteomic, methylation, and metabolomic data from public repositories.
     The package creates integrated data objects and provides a Shiny
@@ -20,9 +25,7 @@ Imports:
     assertthat,
     Biobase,
     BiocFileCache,
-    clariomdhumantranscriptcluster.db,
     data.table,
-    DEP,
     DESeq2,
     dplyr,
     GEOquery,
@@ -31,41 +34,45 @@ Imports:
     graphics,
     grid,
     grDevices,
-    hgu133a.db,
+    limma,
+    makeunique,
+    methods,
+    org.Hs.eg.db,
+    org.Mm.eg.db,
+    org.Rn.eg.db,
+    R.utils,
+    readxl,
+    reshape2,
+    rpx,
+    S4Vectors,
+    stats,
+    stringr,
+    SummarizedExperiment,
+    textclean,
+    tidyr,
+    tools,
+    utils
+Suggests:
+    DEP,
+    clariomdhumantranscriptcluster.db,
+    DT,
     hgu133plus2.db,
     hta20transcriptcluster.db,
     hugene10sttranscriptcluster.db,
     hugene11sttranscriptcluster.db,
     hugene20sttranscriptcluster.db,
     hwgcod.db,
-    illuminaHumanv4.db,
-    limma,
-    makeunique,
+    knitr,
     MSnbase,
     NormalyzerDE,
-    org.Hs.eg.db,
-    org.Mm.eg.db,
-    org.Rn.eg.db,
-    R.utils,
-    radiant.data,
-    readxl,
-    reshape2,
-    rpx,
-    rtracklayer,
-    S4Vectors,
-    stats,
-    stringr,
-    SummarizedExperiment,
-    textclean,
-    tidyr
-Suggests:
-    DT,
-    knitr,
     plotly,
     RColorBrewer,
     rmarkdown,
     shiny,
-    shinyWidgets
+    shinyWidgets,
+    targets,
+    testthat (>= 3.0.0),
+    withr
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -73,3 +80,4 @@ URL: https://github.com/brendangongol/MultiOmicsDataCompile
 BugReports: https://github.com/brendangongol/MultiOmicsDataCompile/issues
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.0
+Config/testthat/edition: 3

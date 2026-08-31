@@ -8,9 +8,10 @@ RawDataCompile(
   Fpath,
   outPath,
   StartAt = 1,
-  sleep = 20,
-  GTFHumanFpath,
-  GTFMouseFpath
+  sleep = 0,
+  GTFHumanFpath = NULL,
+  GTFMouseFpath = NULL,
+  overview = NULL
 )
 }
 \arguments{
@@ -20,19 +21,22 @@ RawDataCompile(
 
 \item{StartAt}{The one-based file index at which processing starts.}
 
-\item{sleep}{Seconds to pause between datasets, useful for cloud-synchronized
-output directories.}
+\item{sleep}{Deprecated and ignored. Output is now written once after all
+selected datasets have been incorporated.}
 
-\item{GTFHumanFpath}{A path to a human GTF annotation file.}
+\item{GTFHumanFpath, GTFMouseFpath}{Deprecated and ignored. The active
+workflow no longer calculates FPKM from genomic spans.}
 
-\item{GTFMouseFpath}{A path to a mouse GTF annotation file.}
+\item{overview}{An optional dataset manifest used to identify each dataset's
+technology and species. When omitted, species is inferred from identifiers
+and technology is inferred conservatively from the filename.}
 }
 \value{
 Invisibly, the compiled data table.
 }
 \description{
 Combines harmonized array and RNA-seq expression files into a gene-level
-table and adds human and mouse gene-length annotations from GTF files.
+table while preserving species-specific stable feature identifiers.
 }
 \seealso{
 Other transcriptomics functions:
@@ -42,6 +46,8 @@ Other transcriptomics functions:
 \code{\link[=GEOCompile]{GEOCompile()}},
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
-\code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}}
+\code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

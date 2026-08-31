@@ -20,9 +20,11 @@ GEOCompile(
   writeMetaData = TRUE,
   DBPath,
   Technology,
+  Species = NULL,
   renameRaw = FALSE,
   subsetRaw = FALSE,
-  sleep = 30
+  sleep = 0,
+  shrinkLFC = TRUE
 )
 }
 \arguments{
@@ -66,6 +68,10 @@ should be written to disk.}
 \item{Technology}{A character vector containing \code{"Array"} or \code{"RNAseq"} for
 each dataset.}
 
+\item{Species}{An optional character vector containing the organism for each
+dataset. For RNA-seq data, the value is validated against the species and
+genome information returned by GEO when available.}
+
 \item{renameRaw}{A logical value indicating whether raw-data columns should
 be renamed using \code{nameraw}.}
 
@@ -73,6 +79,10 @@ be renamed using \code{nameraw}.}
 only samples used in the comparison.}
 
 \item{sleep}{The number of seconds to pause between datasets.}
+
+\item{shrinkLFC}{A logical value indicating whether RNA-seq log2 fold changes
+should be shrunk with DESeq2's normal-prior estimator for ranking and
+visualization. Statistical tests and adjusted p-values are unchanged.}
 }
 \value{
 Invisibly, \code{NULL}. Results are written to the requested output
@@ -91,6 +101,8 @@ Other transcriptomics functions:
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
 \code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

@@ -42,7 +42,9 @@ Create a differential-abundance volcano plot
 }
 \seealso{
 Other exploration functions:
+\code{\link[=MeltExpressionAssay]{MeltExpressionAssay()}},
 \code{\link[=VolcanoPlot]{VolcanoPlot()}},
-\code{\link[=densityPlotFromList]{densityPlotFromList()}}
+\code{\link[=densityPlotFromList]{densityPlotFromList()}},
+\code{\link[=launchMultiOmicsExplorer]{launchMultiOmicsExplorer()}}
 }
 \concept{exploration functions}

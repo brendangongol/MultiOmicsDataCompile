@@ -4,7 +4,7 @@
 \alias{MetDataCompile}
 \title{Compile sample metadata}
 \usage{
-MetDataCompile(RNAseqFilePath, ArrayFilePath, overview)
+MetDataCompile(RNAseqFilePath, ArrayFilePath, overview, conditions = NULL)
 }
 \arguments{
 \item{RNAseqFilePath}{A path containing RNA-seq metadata tables.}
@@ -13,6 +13,11 @@ MetDataCompile(RNAseqFilePath, ArrayFilePath, overview)
 
 \item{overview}{A data table with dataset \code{ID}, \code{Tissue}, and \code{Disease}
 columns.}
+
+\item{conditions}{An optional sample-condition table produced by
+\code{\link[=SampleConditions]{SampleConditions()}}, or a path to the directory of raw-expression files
+from which one should be derived. When \code{NULL}, no \code{condition} column is
+added and \code{\link[=GenerateRawSE]{GenerateRawSE()}} will stop for any RNA-seq dataset.}
 }
 \value{
 A data frame with one row per raw-data sample.
@@ -20,6 +25,10 @@ A data frame with one row per raw-data sample.
 \description{
 Harmonizes SRA run tables and GEO microarray sample metadata, standardizes
 field names, and adds disease and tissue annotations from the overview table.
+Supplying \code{conditions} also attaches the sample-level \code{condition} column that
+\code{\link[=GenerateRawSE]{GenerateRawSE()}} requires for RNA-seq datasets. Neither repository records a
+usable condition, so it is taken from the manifest's comparison codes rather
+than inferred from sample order.
 }
 \seealso{
 Other transcriptomics functions:
@@ -29,6 +38,8 @@ Other transcriptomics functions:
 \code{\link[=GEOCompile]{GEOCompile()}},
 \code{\link[=GenerateRawSE]{GenerateRawSE()}},
 \code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

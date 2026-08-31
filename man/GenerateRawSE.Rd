@@ -16,13 +16,18 @@ raw-data column names.}
 and disease metadata.}
 }
 \value{
-A list with \code{RawSE}, the raw expression experiment, and \code{RPKMSE}, the
-combined normalized expression experiment.
+A list containing \code{RNAseqSE} and \code{ArraySE}, named lists of
+per-dataset experiments; \code{ExplorationSE}, a within-dataset standardized
+experiment for qualitative visualization; and compatibility aliases
+\code{RawSE}, \code{ExpressionSE}, and \code{RPKMSE}. \code{RPKMSE} no longer contains RPKM or
+FPKM values and is retained only to ease migration.
 }
 \description{
-Aligns sample metadata with a compiled expression table, creates a raw
-\code{SummarizedExperiment}, converts RNA-seq counts to FPKM, and combines the
-normalized RNA-seq values with microarray expression data.
+Aligns sample metadata with a compiled expression table and creates separate
+per-dataset RNA-seq and microarray experiments. RNA-seq experiments retain
+raw counts, DESeq2 size-factor normalized counts, and transformed values.
+A separate exploration experiment contains within-dataset z-scores so that
+incompatible measurement units are not presented as one abundance assay.
 }
 \seealso{
 Other transcriptomics functions:
@@ -32,6 +37,8 @@ Other transcriptomics functions:
 \code{\link[=GEOCompile]{GEOCompile()}},
 \code{\link[=MetDataCompile]{MetDataCompile()}},
 \code{\link[=PlatformAnnotationLoad]{PlatformAnnotationLoad()}},
-\code{\link[=RawDataCompile]{RawDataCompile()}}
+\code{\link[=RNAseqQC]{RNAseqQC()}},
+\code{\link[=RawDataCompile]{RawDataCompile()}},
+\code{\link[=SampleConditions]{SampleConditions()}}
 }
 \concept{transcriptomics functions}

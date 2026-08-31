@@ -18,7 +18,9 @@ Plot assay-value densities
 }
 \seealso{
 Other exploration functions:
+\code{\link[=MeltExpressionAssay]{MeltExpressionAssay()}},
 \code{\link[=VolcanoPlot]{VolcanoPlot()}},
+\code{\link[=launchMultiOmicsExplorer]{launchMultiOmicsExplorer()}},
 \code{\link[=plot_volcano2]{plot_volcano2()}}
 }
 \concept{exploration functions}

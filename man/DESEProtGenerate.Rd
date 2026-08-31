@@ -14,12 +14,15 @@ files.}
 }
 \value{
 A \code{SummarizedExperiment} containing the compiled assays and protein
-annotations. The same object is saved to \code{SEPath}.
+annotations. Each assay holds \code{logFC}, \code{AdjPValue}, \code{Pvalue}, and
+\code{BHCorrection} columns. The same object is saved to \code{SEPath}.
 }
 \description{
 Combines processed proteomic differential-expression files into a single
 \code{\link[SummarizedExperiment:SummarizedExperiment]{SummarizedExperiment::SummarizedExperiment()}} with one assay per
-comparison.
+comparison. When \code{SEPath} already holds a database, the datasets it does not
+yet contain are appended to it and the existing protein annotations are
+reused, so that every assay stays aligned to the same features.
 }
 \seealso{
 Other proteomics functions:

@@ -5,9 +5,9 @@
 \alias{LowSampleCountRmove}
 \title{Remove datasets with too few quantified features}
 \usage{
-LowSampleCountRmove(VarRMList, cut)
-
 LowSampleCountRemove(VarRMList, cut)
+
+LowSampleCountRmove(VarRMList, cut)
 }
 \arguments{
 \item{VarRMList}{A named list of \code{SummarizedExperiment} objects.}

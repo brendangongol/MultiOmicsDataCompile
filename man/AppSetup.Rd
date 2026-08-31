@@ -18,6 +18,7 @@ scripts, including the workflow driver. Run this after \code{\link[=makeDirector
 }
 \seealso{
 Other setup functions:
+\code{\link[=ValidateDatasetManifest]{ValidateDatasetManifest()}},
 \code{\link[=makeDirectory]{makeDirectory()}}
 }
 \concept{setup functions}

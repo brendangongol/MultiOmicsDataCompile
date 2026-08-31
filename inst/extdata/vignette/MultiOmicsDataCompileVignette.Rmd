@@ -24,27 +24,21 @@ There are three key steps involved in installing and launching `MultiOmicsDataCo
 
 **1)** Install dependencies <br>
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager")
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
 }
-BiocManager::install(
+remotes::install_github(
   "brendangongol/MultiOmicsDataCompile",
   dependencies = TRUE
 )
 ```
 
-**2)** Install app <br>
-```{r, warning=FALSE, message=FALSE, eval=FALSE}
-devtools::install_github("brendangongol/MultiOmicsDataCompile")
-```
-
-**3)** Execute app deployment <br>
+**2)** Create the processing workspace <br>
 In this step, the user must specify the path by editing the "path to database/MultiOmicsAnalysis" line of code where the database linked to the app will be located. The `makeDirectory` function then builds the specified directory containing the file structures needed to execute the remainder of this vignette and launch the application.   
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
 library(MultiOmicsDataCompile)
 homedir <- "path/to/MultiOmicsDataCompileAnalysis"
 makeDirectory(homedir)
-setwd(homedir)
 ```
 Once `makeDirectory()` and `AppSetup()` have been executed, open the `Scripts` directory and run `WorkflowScript.R` to build the database and launch the Shiny app.
 
@@ -107,8 +101,9 @@ The overview file contains all the information necessary for processing RNA sequ
 An example of this overview file with selected columns is shown below.
 
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-overview <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
-overview <- overview[GEO2R == TRUE,]
+overview_all <- fread(file.path(homedir, "OverviewFiles", "GEODataOverview3.csv"), header = TRUE)
+overview_all <- as.data.table(ValidateDatasetManifest(overview_all))
+overview <- overview_all[GEO2R == TRUE,]
 datatable(overview[34:44,c(1:2, 7,9:12, 14:18), with = FALSE], options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
 ```
 
@@ -136,11 +131,12 @@ Compiled <- GEOCompile(DS=overview$ID,
                        writeMetaData=TRUE,
                        DBPath=file.path(homedir, "AppData"),
                        Technology = overview$Technology,
+                       Species = overview$Species,
                        renameRaw = FALSE,
                        subsetRaw = FALSE)
 ```
 
-GEO2R primarily relies on a vector (referred to as a ComparisonVector here), which drives the treatment and reference sample information for a given data set.  However, it is possible that some confusion could be generated regarding either the sample loading in array data sets and the directionality of the final fold changes (e.g. reversal because of superimposed "1" and "0" designations in the ComparisonVector). The `GEO2RDirectionCheck` function provides some evidence that cComparisonVectors were set up correctly by taking the treatment and control samples, normalizing them with DEseq2 (if an RNAseq sample was processed), and then performing an ad-hoc differential expression by dividing the average of the treatment samples by the average of the reference samples.  This is compared to the fold changes that are calculated by the `GEOCompile` function using spearman correlations and linear models. Note: there is additional variability that is observed in the array data sets since these are processed using limma, a linear model based algorithm. Additionally, samples are processed without additional normalization. 
+GEO2R primarily relies on a `ComparisonVector`, which identifies treatment, reference, and excluded samples. `GEO2RDirectionCheck` validates the requested direction independently. For RNA-seq, it compares log2 means of DESeq2-normalized counts; for arrays already on a log2 scale, it subtracts the group means. The resulting sign agreement, correlation, slope, and intercept are diagnostic checks rather than a second inferential analysis.
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
 checkFile <- GEO2RDirectionCheck(DBPath=file.path(homedir, "AppData"),
                                  DS=overview$ID,
@@ -152,13 +148,13 @@ checkFile <- GEO2RDirectionCheck(DBPath=file.path(homedir, "AppData"),
                                  writeRaw=overview$DownloadRawData,
                                  RawQCPath = file.path(homedir, "RawQC"))
 checkFile[[1]][correlation < 0,]
-fwrite(checkFile[[1]], file.path("./OverviewFiles/ArrayCheck.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+fwrite(checkFile[[1]], file.path(homedir, "OverviewFiles", "ArrayCheck.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
 ```
 
 An example of these direction checks are shown below.
 
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-datatable(head(fread(file.path(homedir, "./OverviewFiles/ArrayCheck.xls") )), options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
+datatable(head(fread(file.path(homedir, "OverviewFiles", "ArrayCheck.xls") )), options = list(pageLength = 10, scrollx = TRUE, scrolly = "400px", autoWidth = TRUE))
 ```
 
 In many cases, one may want to incorporate gene expression profiling data they have analyzed, or that was obtained from sources other than GEO.  This can be accomplished by formatting the data into a table of row bound differential expression analyses with the following column names: <br>
@@ -188,31 +184,30 @@ Following sample processing, all Differential expression data is stored in a [Su
 (DESE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_DB.rds")))
 ```
 
-Once the DEDB has been created, a SummarizedExperiment object is created to store the raw data. This is done in several steps.
-
-First, GTF files for Human and Mouse species are downloaded. (currently only Human and Mouse are supported).
-```{r, warning=FALSE, message=FALSE, eval=FALSE}
-options(timeout=24000); getOption('timeout')
-download.file("https://ftp.ensembl.org/pub/current_gtf/homo_sapiens/Homo_sapiens.GRCh38.111.chr.gtf.gz",
-              destfile = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"), quiet = FALSE)
-download.file("https://ftp.ensembl.org/pub/current_gtf/mus_musculus/Mus_musculus.GRCm39.111.chr.gtf.gz",
-              destfile = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz"), quiet = FALSE)
-```
-
-Next, all raw data is compiled into a single data frame. Duplicated gene names, usually occurring because of because multiple probe sets measuring different locations of a gene, are averaged for each individual sample. If duplicated column names, exist, a correlation analysis is performed between the data in the identical column names. If they are different, a unique name is assigned to the new column by appending ".99" to the end of the column name.  If they are the same, only the original sample is retained. After each dataset incorporation, the file is written to the `outPath` directory. If a failure occurs, the corpiration can be continued by restarting the function and adjusting the `StartAt` argument to reflect the new start position. In some instances, a computer may sync a file to a cloud storage account rendering it un-writable for a period of time.  If this is the case, a pause can be added at the end of each iteration as specified by the `sleep` argument.
+Once the DEDB has been created, raw expression files are compiled using stable species-qualified feature identifiers. Duplicate RNA-seq gene identifiers are summed, while duplicate array probes mapping to the same identifier are averaged. Duplicate sample columns are removed only when their values are exactly equal; conflicting columns receive unique names. The output is written once after compilation.
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
 RawDataCompile(Fpath = file.path(homedir, "AppData"),
-               outPath = file.path("./ProcessFiles/RawData.txt"),
+               outPath = file.path(homedir, "ProcessFiles", "RawData.txt"),
                StartAt = 1,
-               sleep = 60,
-               GTFHumanFpath = file.path(homedir, "OverviewFiles", "GTFHuman.gtf.gz"),
-               GTFMouseFpath = file.path(homedir, "OverviewFiles", "GTFMouse.gtf.gz") )
-RawArrayComplete <- fread(file.path("./ProcessFiles/RawData.txt"))
+               overview = overview_all)
+RawArrayComplete <- fread(file.path(homedir, "ProcessFiles", "RawData.txt"))
 ```
 
-Then, a meta data is created using the meta information stored in the `RunInfo` and `ArrayMetaData` directories.  
+Next, each sample is assigned the condition that `GenerateRawSE()` requires for every RNA-seq dataset. Neither SRA run tables nor GEO sample metadata record a usable condition, so `SampleConditions()` derives it from the manifest instead: the `ComparisonVector` places one character per sample of the stored raw matrix, and `FCColumnNames` supplies the group names. Conditions therefore come from an explicit comparison code and are never inferred from sample order. Where a dataset contributes several comparisons, the first comparison that includes a sample names its condition, and samples that every comparison excludes (`X`) are labelled `"Unassigned"`. Review the resulting table before continuing; a hand-curated table with `rawcolumnnames` and `condition` columns can be supplied instead.
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-metaDF <- MetDataCompile(RNAseqFilePath= file.path("RunInfo"), ArrayFilePath= file.path("ArrayMetaData"), overview=overview)
+conditions <- SampleConditions(DBPath = file.path(homedir, "AppData"),
+                               overview = overview_all)
+fwrite(conditions, file.path(homedir, "OverviewFiles", "SampleConditions.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
+```
+
+Then, a meta data is created using the meta information stored in the `RunInfo` and `ArrayMetaData` directories, and the sample conditions are attached to it.
+```{r, warning=FALSE, message=FALSE, eval=FALSE}
+metaDF <- MetDataCompile(
+  RNAseqFilePath = file.path(homedir, "RunInfo"),
+  ArrayFilePath = file.path(homedir, "ArrayMetaData"),
+  overview = overview_all,
+  conditions = conditions
+)
 #### Save meta data data frame ####
 metaDF$rownames <- rownames(metaDF)
 fwrite(metaDF, file.path(homedir, "OverviewFiles", "metaData.xls"), row.names = FALSE, quote = FALSE, sep = "\t")
@@ -221,15 +216,13 @@ rownames(metaDF) <- metaDF$rownames
 metaDF$rownames <- NULL
 ```
 
-Finally, a raw data SummarizedExperiment object is created. 
+Finally, separate per-dataset RNA-seq and array experiments are created. RNA-seq objects contain counts, normalized counts, and transformed values. The app-facing exploration object contains within-dataset z-scores; it is not an inferential or absolute cross-platform abundance matrix.
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
 library(SummarizedExperiment)
-RawSEList <- GenerateRawSE(df = metaDF, ArrayDT=RawArrayComplete, overview=overview)
-names(RawSEList)
-saveRDS(RawSEList[["RawSE"]], file=file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
-RawSE <- readRDS(file.path(homedir, "ProcessFiles", "SumarizedExp_RawDB.rds"))
-assay(RawSEList[["RPKMSE"]])[1:5,1:5]; head(rowData(RawSEList[["RPKMSE"]])); head(colData(RawSEList[["RPKMSE"]]))
-saveRDS(RawSEList[["RPKMSE"]], file=file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
+ExpressionCollection <- GenerateRawSE(df = metaDF, ArrayDT=RawArrayComplete, overview=overview_all)
+names(ExpressionCollection)
+saveRDS(ExpressionCollection, file=file.path(homedir, "ProcessFiles", "ExpressionCollection.rds"))
+saveRDS(ExpressionCollection[["ExplorationSE"]], file=file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
 expression_norm <- readRDS(file.path(homedir, "ProcessFiles", "expression_norm.v2.RDS"))
 assay(expression_norm)[1:5,1:5]; head(rowData(expression_norm)); head(colData(expression_norm))
 ```
@@ -366,18 +359,16 @@ SaveToProteomicDB(SEList=dataDiffNorm, Path=file.path(homedir, "Proteomic_3"))
 
 Finally, the proteomic data base is created that is ultimately loaded into the app.
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-Proteins <- ProteomicProteinName(fPath = "./Proteomic_3")
+Proteins <- ProteomicProteinName(fPath = file.path(homedir, "Proteomic_3"))
 saveRDS(Proteins, file.path(homedir, "OverviewFiles", "ProteomicProteins.RDS"))
 ```
 
 # Load app
 
-The `AppSetup` function is executed the first time the shiny app is deployed locally.  This function edits all of the app file paths to the directory specified in the `homedir` object. This enables it to be deployed with the `runApp` function. 
+Launch the Shiny app with an explicit data directory. `AppSetup()` remains available for copied-script workflows, but path rewriting is no longer required by the package launcher.
 
 ```{r, warning=FALSE, message=FALSE, eval=FALSE}
-library(shiny)
-AppSetup(homedir)
-runApp("./Scripts")
+launchMultiOmicsExplorer(homedir)
 ```
 
 

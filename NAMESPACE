@@ -16,6 +16,7 @@ export(GEOCompile)
 export(GenerateRawSE)
 export(LowSampleCountRemove)
 export(LowSampleCountRmove)
+export(MeltExpressionAssay)
 export(MetDataCompile)
 export(MultiNormalization)
 export(NPeptideThreshold)
@@ -24,61 +25,89 @@ export(ProtSELoad)
 export(ProteomicProteinName)
 export(ProteomicSELoad)
 export(ProteomicsDataDownload)
+export(RNAseqQC)
 export(RawDataCompile)
 export(RowDataCompile)
+export(SampleConditions)
 export(SaveToProteomicDB)
 export(SigDEAnnotate)
+export(ValidateDatasetManifest)
 export(VolcanoPlot)
 export(add_rejections2)
 export(densityPlotFromList)
 export(impute2)
+export(launchMultiOmicsExplorer)
 export(makeDirectory)
 export(plot_volcano2)
 export(proteomicMZSave)
-import(Biobase)
-import(DESeq2)
-import(GEOquery)
-import(NormalyzerDE)
-import(SummarizedExperiment)
-import(clariomdhumantranscriptcluster.db)
 import(data.table)
-import(dplyr)
-import(ggplot2)
-import(hgu133a.db)
-import(hgu133plus2.db)
-import(hta20transcriptcluster.db)
-import(hugene10sttranscriptcluster.db)
-import(hugene11sttranscriptcluster.db)
-import(hugene20sttranscriptcluster.db)
-import(hwgcod.db)
-import(illuminaHumanv4.db)
-import(limma)
-import(org.Hs.eg.db)
-import(org.Mm.eg.db)
-import(org.Rn.eg.db)
-import(rtracklayer)
-import(stringr)
-import(tidyr)
 importFrom(AnnotationDbi,mappedkeys)
-importFrom(BiocFileCache,BiocFileCache)
-importFrom(DEP,
-  make_se,
-  normalize_vsn,
-  test_diff,
-  theme_DEP1
+importFrom(Biobase,
+  "exprs<-",
+  "fvarLabels<-",
+  exprs,
+  fvarLabels,
+  pData
 )
+importFrom(BiocFileCache,BiocFileCache)
 importFrom(DESeq2,
   DESeq,
   DESeqDataSetFromMatrix,
+  lfcShrink,
   results
 )
-importFrom(MSnbase,exprs)
+importFrom(GEOquery,
+  getGEO,
+  getRNASeqData,
+  getRNASeqQuantGenomeInfo
+)
 importFrom(R.utils,copyDirectory)
 importFrom(S4Vectors,SimpleList)
+importFrom(SummarizedExperiment,
+  "assay<-",
+  "rowData<-",
+  SummarizedExperiment,
+  assay,
+  assays,
+  colData,
+  rowData
+)
 importFrom(assertthat,assert_that)
 importFrom(data.table,
   as.data.table,
   data.table
+)
+importFrom(dplyr,
+  "%>%",
+  arrange,
+  desc,
+  ends_with,
+  filter,
+  group_by,
+  left_join,
+  n,
+  select,
+  summarize
+)
+importFrom(ggplot2,
+  aes,
+  element_text,
+  facet_wrap,
+  geom_boxplot,
+  geom_col,
+  geom_density,
+  geom_point,
+  geom_text,
+  geom_vline,
+  ggplot,
+  ggtitle,
+  labs,
+  scale_color_manual,
+  theme,
+  theme_bw,
+  xlab,
+  xlim,
+  ylim
 )
 importFrom(grDevices,
   dev.off,
@@ -96,12 +125,14 @@ importFrom(limma,
   makeContrasts,
   topTable
 )
-importFrom(radiant.data,rownames_to_column)
+importFrom(methods,as)
+importFrom(org.Hs.eg.db,org.Hs.eg.db)
+importFrom(org.Mm.eg.db,org.Mm.eg.db)
+importFrom(org.Rn.eg.db,org.Rn.eg.db)
 importFrom(readxl,
   read_excel,
   read_xlsx
 )
-importFrom(reshape2,melt)
 importFrom(rpx,
   PXDataset,
   pxfiles,
@@ -118,4 +149,9 @@ importFrom(stats,
   rnorm,
   sd
 )
+importFrom(stringr,str_split)
 importFrom(textclean,mgsub)
+importFrom(tidyr,
+  gather,
+  spread
+)

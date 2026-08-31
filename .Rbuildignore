@@ -1,9 +1,12 @@
 ^.*[.]Rproj$
 ^[.]git$
+^[.]github$
 ^[.]Rproj[.]user$
 ^_r-lib$
+^[.]r-lib$
 ^[.][.]Rcheck$
 ^MultiOmicsDataCompile[.]Rcheck$
 ^MultiOmicsDataCompile_[^/]+[.]tar[.]gz$
 ^images$
 ^LICENSE[.]md$
+^CONTRIBUTING[.]md$

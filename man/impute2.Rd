@@ -14,10 +14,10 @@ impute2(
 \arguments{
 \item{se}{A \code{SummarizedExperiment} object.}
 
-\item{fun}{An imputation method accepted by \code{\link[MSnbase:impute]{MSnbase::impute()}}, or \code{"man"}
+\item{fun}{An imputation method accepted by \code{MSnbase::impute()}, or \code{"man"}
 for manual Gaussian imputation.}
 
-\item{...}{Additional arguments passed to \code{\link[MSnbase:impute]{MSnbase::impute()}} or, for
+\item{...}{Additional arguments passed to \code{MSnbase::impute()} or, for
 \code{fun = "man"}, the numeric \code{shift} and \code{scale} parameters.}
 }
 \value{
